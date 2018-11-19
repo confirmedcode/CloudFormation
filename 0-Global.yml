@@ -1,0 +1,621 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Run once per AWS account. 1) CloudTrail 2) CloudWatch alerts for CloudTrail 3) Audit IAM group and user 4) Allow StackSets to be created/managed. 
+
+Parameters:
+  
+  AdministratorAccountId:
+    Type: String
+    Description: AWS Account Id of the administrator account (the account in which StackSets will be created).
+    MaxLength: 12
+    MinLength: 12
+  
+  AlertEmail:
+    Type: String
+    Description: Email address to send CloudWatch Alerts to.
+  
+  TrailName:
+    Type: String
+    Default: CloudTrail
+  
+  AuditPublicUserPassword:
+    Type: String
+    Default: PublicAudit42!
+    Description: The password for the public audit user account. This is not hidden because it is public.
+  
+Resources:
+  
+  # ========== The CloudTrail ==========
+            
+  CloudTrail:
+    Type: AWS::CloudTrail::Trail
+    DependsOn:
+      - CloudTrailBucketPolicy
+      - CloudTrailCloudWatchLogsLogGroup
+    Properties:
+      CloudWatchLogsRoleArn: !GetAtt CloudTrailCloudWatchLogsRole.Arn
+      CloudWatchLogsLogGroupArn: !GetAtt CloudTrailCloudWatchLogsLogGroup.Arn
+      EnableLogFileValidation: true
+      EventSelectors:
+        - IncludeManagementEvents: true
+          ReadWriteType: All
+      IncludeGlobalServiceEvents: true
+      IsLogging: true
+      IsMultiRegionTrail: true
+      S3BucketName: !Ref CloudTrailBucket
+      TrailName: !Ref TrailName
+  
+  # ========== S3 Bucket for CloudTrail ==========
+  
+  CloudTrailBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+  
+  CloudTrailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn:
+      - CloudTrailBucket
+    Properties:
+      Bucket: !Ref CloudTrailBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AWSCloudTrailAclCheck20150319
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !Sub arn:aws:s3:::${CloudTrailBucket}
+          - Sid: AWSCloudTrailWrite20150319
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub arn:aws:s3:::${CloudTrailBucket}/AWSLogs/${AWS::AccountId}/*
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+  
+  # ========== CloudWatch Logs for CloudTrail ==========
+  
+  CloudTrailCloudWatchLogsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: !Ref TrailName
+  
+  CloudTrailCloudWatchLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - cloudtrail.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: CloudTrail
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: AWSCloudTrailCreateLogStream20141101
+            Effect: Allow
+            Action:
+            - logs:CreateLogStream
+            Resource: !Sub arn:aws:logs:${AWS::Region}:*:log-group:${CloudTrailCloudWatchLogsLogGroup}:log-stream:*
+          - Sid: AWSCloudTrailPutLogEvents20141101
+            Effect: Allow
+            Action:
+            - logs:PutLogEvents
+            Resource: !Sub arn:aws:logs:${AWS::Region}:*:log-group:${CloudTrailCloudWatchLogsLogGroup}:log-stream:*
+            
+  # ========== Email Alert On CloudTrail Triggers ==========
+  
+  AdminEmailerTopic:
+    Type: AWS::SNS::Topic
+    DependsOn:
+      - CloudTrail
+    Properties: 
+      DisplayName: Admin Alerts
+      Subscription:
+        - Endpoint: !Ref AlertEmail
+          Protocol: email
+
+  AllowSnsTopicPublishPolicy:
+    Type: AWS::SNS::TopicPolicy
+    DependsOn:
+      - CloudTrail
+    Properties:
+      PolicyDocument:
+        Id: AllowSnsTopicPublishPolicy
+        Version: '2012-10-17'
+        Statement:
+        - Sid: AllowCWEToPublishEventsToVpnEmailAlarmTopic
+          Effect: Allow
+          Principal:
+            Service: events.amazonaws.com
+          Action: sns:Publish
+          Resource: !Ref AdminEmailerTopic
+        - Sid: AllowAllToPublishToEmailAlarmTopic
+          Effect: Allow
+          Principal:
+            AWS: "*"
+          Action:
+            - SNS:GetTopicAttributes
+            - SNS:SetTopicAttributes
+            - SNS:AddPermission
+            - SNS:RemovePermission
+            - SNS:DeleteTopic
+            - SNS:Subscribe
+            - SNS:ListSubscriptionsByTopic
+            - SNS:Publish
+            - SNS:Receive
+          Resource: !Ref AdminEmailerTopic
+          Condition:
+            StringEquals:
+              AWS:SourceOwner: !Ref AWS::AccountId
+      Topics:
+        - !Ref AdminEmailerTopic
+        
+  # Create a filtered version of the CloudTrail logs for events of interest
+  CloudTrailFilteredCloudWatchLogsLogGroup:
+    Type: AWS::Logs::LogGroup
+    DependsOn:
+      - CloudTrail
+    Properties: 
+      LogGroupName: !Sub ${TrailName}-Filtered
+  
+  CloudTrailFilteredCloudWatchLogsLogStream:
+    Type: AWS::Logs::LogStream
+    Properties: 
+      LogGroupName: !Ref CloudTrailFilteredCloudWatchLogsLogGroup
+      LogStreamName: !Ref CloudTrailFilteredCloudWatchLogsLogGroup
+
+  # Alert the admin by email, and also log to the CloudTrail-Filtered Log Group for record keeping and easier tracking
+  CloudTrailEmailerFunction:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - CloudTrail
+    Properties:
+      Code:
+        ZipFile: !Sub >
+          var aws = require('aws-sdk');
+          var zlib = require('zlib');
+          exports.handler = function(event, context) {
+            var payload = new Buffer(event.awslogs.data, 'base64');
+            zlib.gunzip(payload, function(e, result) {
+              if (e) { context.fail(e); }
+              else {
+                result = JSON.parse(result.toString('ascii'));
+                var sns = new aws.SNS();
+                const cloudwatchlogs = new aws.CloudWatchLogs();
+                var filteredLogGroup = "${CloudTrailFilteredCloudWatchLogsLogGroup}";
+                var messageText = "";
+                var eventNames = "";
+                for (const logEvent of result.logEvents) {
+                  const message = JSON.parse(logEvent.message.replace(/&quot;/g,'"'));
+                  messageText = messageText + "========== " + message.eventName + " ==========\n" + JSON.stringify(message, null, 2) + "\n\n";
+                  eventNames = eventNames + message.eventName + ", ";
+                }
+                return sns.publish({
+                  Message: messageText, 
+                  Subject: "CloudTrail " + eventNames, 
+                  TopicArn: "${AdminEmailerTopic}"
+                }).promise()
+                .catch( error => {
+                  console.error("Error sending to SNS: " + error);
+                })
+                .then( success => {
+                  return cloudwatchlogs.describeLogStreams( {
+                    logGroupName: filteredLogGroup
+                  }).promise();
+                })
+                .catch( error => {
+                  console.error("Error getting Log Streams: " + error);
+                })
+                .then( data => {
+                  return cloudwatchlogs.putLogEvents( {
+                    logEvents: [ {
+                      message: messageText,
+                      timestamp: (new Date()).getTime()
+                    } ],
+                    logGroupName: filteredLogGroup,
+                    logStreamName: filteredLogGroup,
+                    sequenceToken: data.logStreams[0].uploadSequenceToken
+                  }).promise();
+                })
+                .catch( error => {
+                  console.error("Error putting CloudWatch Log: " + error);
+                })
+                .then( result => {
+                  context.done();
+                });
+              }
+            });
+          };
+      Handler: index.handler
+      Role: !GetAtt CloudTrailEmailerFunctionRole.Arn
+      Runtime: nodejs6.10
+      Timeout: 10
+
+  CloudTrailEmailerCloudWatchPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - CloudTrail
+    Properties:
+      FunctionName: !GetAtt CloudTrailEmailerFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: !Sub logs.${AWS::Region}.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+
+  CloudTrailEmailerFunctionRole:
+    Type: AWS::IAM::Role
+    DependsOn:
+      - CloudTrail
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: lambda-logs-SNS
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource:
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*:log-stream:*
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${CloudTrailFilteredCloudWatchLogsLogGroup}
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${CloudTrailFilteredCloudWatchLogsLogGroup}:log-stream:*
+          - Effect: Allow
+            Action:
+              - logs:DescribeLogStreams
+              - logs:DescribeLogGroups
+            Resource:
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*
+          - Effect: Allow
+            Action:
+              - sns:Publish
+            Resource: !Ref AdminEmailerTopic
+
+  CloudTrailEmailerCloudWatchPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - CloudTrail
+    Properties:
+      FunctionName: !GetAtt CloudTrailEmailerFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: !Sub logs.${AWS::Region}.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+    
+  CloudTrailSubscriptionFilter:
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn:
+      - CloudTrail
+    Properties: 
+      DestinationArn: !GetAtt CloudTrailEmailerFunction.Arn
+      FilterPattern: '{ $.eventName=AuthorizeSecurityGroupIngress || $.eventName=AuthorizeSecurityGroupEgress
+|| $.eventName=CreateSecurityGroup || $.eventName=DeleteSecurityGroup 
+|| (( $.eventName=GetParametersByPath || $.eventName=GetParameter || $.eventName=GetParameters ) && $.requestParameters.withDecryption IS TRUE)
+|| $.eventName=RunInstances || $.eventName=StartInstances || $.eventName=TerminateInstances
+|| $.eventName=UpdateTrail || $.eventName=DeleteTrail || $.eventName=StopLogging
+|| $.eventName=PutGroupPolicy || $.eventName=PutRolePolicy || $.eventName=PutUserPolicy 
+|| $.eventName=CreatePolicyVersion || $.eventName=AttachRolePolicy || $.eventName=AttachUserPolicy || $.eventName=AttachGroupPolicy}'
+      LogGroupName: !Ref TrailName
+
+  # ==================================================
+  # ================ AUDIT IAM GROUP =================
+  # ==================================================
+  
+  AuditUserAccessKey:
+    Type: AWS::IAM::AccessKey
+    DependsOn:
+      - CloudTrail
+    Properties: 
+      Status: Active
+      UserName: !Ref AuditUser
+  
+  # The default audit user can't change its own password because it's a shared account
+  AuditUser:
+    Type: AWS::IAM::User
+    DependsOn:
+      - AuditGroup
+      - CloudTrail
+    Properties:
+      Groups:
+        - !Ref AuditGroup
+      LoginProfile:
+        Password: !Ref AuditPublicUserPassword
+        PasswordResetRequired: false
+      Policies:
+        - PolicyName: DenyChangeOwnPassword
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+            - Effect: Deny
+              Action:
+                - iam:GetAccountPasswordPolicy
+              Resource:
+                - "*"
+            - Effect: Deny
+              Action:
+                - iam:ChangePassword
+              Resource:
+                - !Sub arn:aws:iam::${AWS::AccountId}:user/${!aws:username}
+      UserName: Audit-Public
+ 
+  AuditGroup:
+    Type: AWS::IAM::Group
+    DependsOn:
+      - CloudTrail
+    Properties:
+      GroupName: Audit
+      Policies:
+        # Only allow access through EC2 IPs - In case auditors want to hide their IPs on CloudTrail
+        # - PolicyName: OnlyAccessWithEC2IPs
+        #   PolicyDocument:
+        #     Version: '2012-10-17'
+        #     Statement:
+        #       Effect: Deny
+        #       Action: "*"
+        #       Resource: "*"
+        #       Condition:
+        #         NotIpAddress:
+        #           aws:SourceIp:
+        #             - 100.20.0.0/14
+        #             - 100.24.0.0/13
+        #             - 103.4.8.0/21
+        #             - 107.20.0.0/14
+        #             - 108.128.0.0/13
+        #             - 122.248.192.0/18
+        #             - 13.0.0.0/8
+        #             - 157.175.0.0/16
+        #             - 160.1.0.0/16
+        #             - 162.213.232.0/24
+        #             - 174.129.0.0/16
+        #             - 175.41.128.0/18
+        #             - 175.41.192.0/18
+        #             - 176.32.64.0/19
+        #             - 176.34.0.0/19
+        #             - 176.34.128.0/17
+        #             - 176.34.32.0/19
+        #             - 176.34.64.0/18
+        #             - 177.71.128.0/17
+        #             - 18.0.0.0/8
+        #             - 184.169.128.0/17
+        #             - 184.72.0.0/18
+        #             - 184.72.128.0/17
+        #             - 184.72.64.0/18
+        #             - 184.73.0.0/16
+        #             - 185.48.120.0/22
+        #             - 204.236.128.0/18
+        #             - 204.236.192.0/18
+        #             - 216.182.224.0/21
+        #             - 216.182.232.0/22
+        #             - 216.182.236.0/23
+        #             - 216.182.238.0/23
+        #             - 23.20.0.0/14
+        #             - 3.0.0.0/15
+        #             - 3.104.0.0/14
+        #             - 3.112.0.0/14
+        #             - 3.120.0.0/14
+        #             - 3.16.0.0/14
+        #             - 3.8.0.0/14
+        #             - 3.80.0.0/12
+        #             - 34.192.0.0/12
+        #             - 34.208.0.0/12
+        #             - 34.224.0.0/12
+        #             - 34.240.0.0/13
+        #             - 34.248.0.0/13
+        #             - 35.153.0.0/16
+        #             - 35.154.0.0/16
+        #             - 35.155.0.0/16
+        #             - 35.156.0.0/14
+        #             - 35.160.0.0/13
+        #             - 35.168.0.0/13
+        #             - 35.176.0.0/15
+        #             - 35.178.0.0/15
+        #             - 35.180.0.0/16
+        #             - 35.182.0.0/15
+        #             - 46.137.0.0/17
+        #             - 46.137.128.0/18
+        #             - 46.137.192.0/19
+        #             - 46.137.224.0/19
+        #             - 46.51.128.0/18
+        #             - 46.51.192.0/20
+        #             - 46.51.216.0/21
+        #             - 46.51.224.0/19
+        #             - 50.112.0.0/16
+        #             - 50.16.0.0/15
+        #             - 50.18.0.0/16
+        #             - 50.19.0.0/16
+        #             - 52.0.0.0/8
+        #             - 54.0.0.0/8
+        #             - 63.32.0.0/14
+        #             - 67.202.0.0/18
+        #             - 72.44.32.0/19
+        #             - 75.101.128.0/17
+        #             - 79.125.0.0/17
+        #             - 96.127.0.0/17
+        #             - 99.79.0.0/16
+        #             - 99.80.0.0/15
+        - PolicyName: ReadCloudWatchLogsAdminAuditCloudTrail
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+            - Effect: Allow
+              Action:
+                - logs:DescribeLogStreams
+                - logs:DescribeLogGroups
+              Resource:
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*
+            - Effect: Allow
+              Action:
+                - logs:GetLogEvents
+                - logs:FilterLogEvents
+              Resource:
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*-AdminAudit
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*-AdminAudit:*
+                - !Sub
+                  - arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${CloudTrailCloudWatchLogsLogGroup}
+                  - CloudTrailCloudWatchLogsLogGroup: !Ref CloudTrailCloudWatchLogsLogGroup
+                - !Sub
+                  - arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${CloudTrailCloudWatchLogsLogGroup}:*
+                  - CloudTrailCloudWatchLogsLogGroup: !Ref CloudTrailCloudWatchLogsLogGroup
+            - Effect: Allow
+              Action:
+                - s3:ListBucket
+              Resource:
+                - !Sub
+                  - arn:aws:s3:::${CloudTrailBucket}
+                  - CloudTrailBucket: !Ref CloudTrailBucket
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource:
+                - !Sub
+                  - arn:aws:s3:::${CloudTrailBucket}/*
+                  - CloudTrailBucket: !Ref CloudTrailBucket
+        - PolicyName: AuditReadOnly
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+            - Effect: Allow
+              Action:
+                - application-autoscaling:Describe*
+                - autoscaling-plans:Describe*
+                - autoscaling:Describe*
+                - cloudformation:Describe*
+                - cloudformation:Get*
+                - cloudformation:List*
+                - cloudformation:Estimate*
+                - cloudformation:Preview*
+                - cloudtrail:Describe*
+                - cloudtrail:Get*
+                - cloudtrail:List*
+                - cloudtrail:LookupEvents
+                - cloudwatch:Describe*
+                - cloudwatch:Get*
+                - cloudwatch:List*
+                - codebuild:BatchGet*
+                - codebuild:List*
+                - codecommit:BatchGet*
+                - codecommit:Get*
+                - codecommit:List*
+                - codecommit:Describe*
+                - codecommit:GitPull
+                - codedeploy:BatchGet*
+                - codedeploy:Get*
+                - codedeploy:List*
+                - codepipeline:List*
+                - codepipeline:Get*
+                - ec2:Describe*
+                - ec2:Get*
+                - ec2messages:Get*
+                - elasticache:Describe*
+                - elasticache:List*
+                - elasticloadbalancing:DescribeLoadBalancers
+                - iam:getRole
+                - iam:getRolePolicy
+                - iam:getInstanceProfile
+                - iam:getPolicy
+                - iam:getPolicyVersion
+                - iam:ListAttachedRolePolicies
+                - iam:listInstanceProfiles
+                - iam:listPolicies
+                - iam:listRoles
+                - iam:listRolePolicies
+                - iam:listInstanceProfilesForRole
+                - lambda:List*
+                - lambda:Get*
+                - route53:Get*
+                - route53:List*
+                - route53domains:Get*
+                - route53domains:List*
+                - route53domains:View*
+                - s3:Get*
+                - s3:List*
+                - ses:Get*
+                - ses:List*
+                - ses:Describe*
+                - ssm:List*
+                - tag:Get*
+              Resource: "*"
+
+  # ==================================================
+  # =========== ALLOW STACKSET MANAGEMENT ============
+  # ==================================================
+      
+  AdministrationRole:
+    Type: AWS::IAM::Role
+    DependsOn:
+      - CloudTrail
+    Properties:
+      RoleName: AWSCloudFormationStackSetAdministrationRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: AssumeRole-AWSCloudFormationStackSetExecutionRole
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                Resource:
+                  - "arn:aws:iam::*:role/AWSCloudFormationStackSetExecutionRole"
+                  
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    DependsOn:
+      - CloudTrail
+    Properties:
+      RoleName: AWSCloudFormationStackSetExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Ref AdministratorAccountId
+            Action:
+              - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+Outputs:
+  
+  AuditUserAccessKeyId:
+    Value: !Ref AuditUserAccessKey
+    Export:
+      Name: AuditUserAccessKeyId
+  AuditUserAccessKeySecret:
+    Value: !GetAtt AuditUserAccessKey.SecretAccessKey
+    Export:
+      Name: AuditUserAccessKeySecret

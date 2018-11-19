@@ -1,0 +1,624 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Inter Region VPC Peering. Adds route table entries for Peering Connections from VPN VPCs to Base VPC.
+
+Parameters:
+  
+  Environment:
+    Type: String
+    Description: Name of the environment.
+  
+  SuricataBucket:
+    Type: String
+    Description: Bucket where Suricata rules are
+  
+  PeerUsEast1:
+    Type: String
+  PeerUsEast2:
+    Type: String
+  PeerUsWest1:
+    Type: String
+  PeerUsWest2:
+    Type: String
+  PeerApSouth1:
+    Type: String
+  PeerApNortheast2:
+    Type: String
+  PeerApSoutheast1:
+    Type: String
+  PeerApSoutheast2:
+    Type: String
+  PeerApNortheast1:
+    Type: String
+  PeerCaCentral1:
+    Type: String
+  PeerEuCentral1:
+    Type: String
+  PeerEuWest1:
+    Type: String
+  PeerEuWest2:
+    Type: String
+  PeerEuWest3:
+    Type: String
+  PeerSaEast1:
+    Type: String
+
+Mappings: 
+  
+  RegionMapping: 
+    us-east-1:
+      Subdomain: us-east
+      Cidr: 172.16.0.0/17
+    us-east-2:
+      Subdomain: us-east
+      Cidr: 172.16.128.0/17
+    us-west-1:
+      Subdomain: us-west
+      Cidr: 172.17.0.0/17
+    us-west-2:
+      Subdomain: us-west
+      Cidr: 172.17.128.0/17
+    ap-northeast-1:
+      Subdomain: ap-tokyo
+      Cidr: 172.18.0.0/17
+    ap-northeast-2:
+      Subdomain: ap-seoul
+      Cidr: 172.18.128.0/17
+    ap-south-1:
+      Subdomain: ap-mumbai
+      Cidr: 172.19.0.0/17
+    ap-southeast-1:
+      Subdomain: ap-singapore
+      Cidr: 172.19.128.0/17
+    ap-southeast-2:
+      Subdomain: ap-sydney
+      Cidr: 172.20.0.0/17
+    ca-central-1:
+      Subdomain: canada
+      Cidr: 172.20.128.0/17
+    eu-central-1:
+      Subdomain: eu-frankfurt
+      Cidr: 172.21.0.0/17
+    eu-west-1:
+      Subdomain: eu-ireland
+      Cidr: 172.21.128.0/17
+    eu-west-2:
+      Subdomain: eu-london
+      Cidr: 172.22.0.0/17
+    eu-west-3:
+      Subdomain: s1
+      Cidr: 172.22.128.0/17
+    sa-east-1:
+      Subdomain: sa
+      Cidr: 172.23.0.0/17
+
+Conditions:
+  
+  IsUsEast1: !Equals [!Ref "AWS::Region", us-east-1]
+  IsUsEast2: !Equals [!Ref "AWS::Region", us-east-2]
+  IsUsWest1: !Equals [!Ref "AWS::Region", us-west-1]
+  IsUsWest2: !Equals [!Ref "AWS::Region", us-west-2]
+  IsApSouth1: !Equals [!Ref "AWS::Region", ap-south-1]
+  IsApNortheast2: !Equals [!Ref "AWS::Region", ap-northeast-2]
+  IsApSoutheast1: !Equals [!Ref "AWS::Region", ap-southeast-1]
+  IsApSoutheast2: !Equals [!Ref "AWS::Region", ap-southeast-2]
+  IsApNortheast1: !Equals [!Ref "AWS::Region", ap-northeast-1]
+  IsCaCentral1: !Equals [!Ref "AWS::Region", ca-central-1]
+  IsEuCentral1: !Equals [!Ref "AWS::Region", eu-central-1]
+  IsEuWest1: !Equals [!Ref "AWS::Region", eu-west-1]
+  IsEuWest2: !Equals [!Ref "AWS::Region", eu-west-2]
+  IsEuWest3: !Equals [!Ref "AWS::Region", eu-west-3]
+  IsSaEast1: !Equals [!Ref "AWS::Region", sa-east-1]
+
+Resources:
+  
+  # ==================================================
+  # ============= VPN INSTANCE ROLE ==================
+  # ==================================================
+             
+  VpnRole:
+    Type: AWS::IAM::Role
+    DependsOn:
+      - BandwidthApplication
+      - BandwidthDeploymentGroup
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+          - Fn::ImportValue:
+              !Join [ '-', [ !Ref Environment, SSMManagedPolicy ] ]
+      Policies:
+        - PolicyName: !Sub ${Environment}-VPN
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource:
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-VPN
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-VPN:log-stream:*
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-VPN-Node
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-VPN-Node:log-stream:*
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-VPN-Suricata
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-VPN-Suricata:log-stream:*
+            - Effect: Allow
+              Action:
+                - codedeploy:CreateDeployment
+              Resource: !Sub arn:aws:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${BandwidthApplication}/${BandwidthDeploymentGroup}
+            - Effect: Allow
+              Action:
+                - codedeploy:GetDeploymentConfig
+              Resource: !Sub arn:aws:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentconfig:CodeDeployDefault.OneAtATime
+            - Effect: Allow
+              Action:
+                - codedeploy:GetApplicationRevision
+                - codedeploy:RegisterApplicationRevision
+              Resource: !Sub arn:aws:codedeploy:${AWS::Region}:${AWS::AccountId}:application:${BandwidthApplication}
+            - Effect: Allow
+              Action:
+                - s3:ListBucket
+              Resource:
+                - !Sub arn:aws:s3:::${SuricataBucket}
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource:
+                - !Sub arn:aws:s3:::${SuricataBucket}/*
+            - Effect: Allow
+              Action:
+                - s3:GetBucketLocation
+              Resource:
+                - arn:aws:s3:::*
+
+  VpnInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref VpnRole
+  
+  # ==================================================
+  # =========== VPN CLOUDWATCH LOGS  =================
+  # ==================================================
+  
+  VpnLogsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, VPN ] ]
+      
+  VpnNodeLogsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, VPN-Node ] ]
+      
+  VpnSuricataLogsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, VPN-Suricata ] ]
+  
+  VpnEmailerSubscriptionFilter:
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn:
+      - VpnLogsLogGroup
+    Properties: 
+      DestinationArn: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ErrorEmailerFunctionArn ] ]
+      FilterPattern: 'run_bandwidth_check.sh'
+      LogGroupName: !Join [ '-', [ !Ref Environment, VPN ] ]
+  
+  VpnNodeEmailerSubscriptionFilter:
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn:
+      - VpnNodeLogsLogGroup
+    Properties: 
+      DestinationArn: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ErrorEmailerFunctionArn ] ]
+      FilterPattern: '?error ?Error'
+      LogGroupName: !Join [ '-', [ !Ref Environment, VPN-Node ] ]
+
+  # ==================================================
+  # =============== VPN VPC Networking ===============
+  # ==================================================
+            
+  VpnInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, VPN ] ] 
+        
+  VpnVPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, VpnVPCId ] ]
+      InternetGatewayId: !Ref VpnInternetGateway
+  
+  VpnSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !FindInMap [ RegionMapping, !Ref "AWS::Region", Cidr ]
+      AvailabilityZone: 
+        Fn::Select: 
+          - 0
+          - Fn::GetAZs: ""
+      MapPublicIpOnLaunch: true
+      VpcId: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, VpnVPCId ] ]
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, VPN ] ]
+
+  VpnRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, VpnVPCId ] ]
+      Tags:
+        - Key: Name
+          Value: !Join [ '-', [ !Ref Environment, VPN ] ] 
+
+  VpnRoute:
+    Type: AWS::EC2::Route
+    DependsOn:
+      - VpnInternetGateway
+      - VpnRouteTable
+      - VpnVPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref VpnRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref VpnInternetGateway
+  
+  VpnSubnetRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    DependsOn:
+      - VpnRouteTable
+      - VpnSubnet
+      - VpnRoute
+    Properties:
+      RouteTableId: !Ref VpnRouteTable
+      SubnetId: !Ref VpnSubnet
+
+  # ==================================================
+  # =============== VPN SECURITY GROUPS ==============
+  # ==================================================
+
+  VpnSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, VpnVPCId ] ]
+      GroupDescription: Enable IPsec
+      Tags:
+        - Key: Name
+          Value: VPN
+        - Key: Environment
+          Value: !Ref Environment
+      SecurityGroupIngress:
+        - IpProtocol: udp
+          FromPort: 500
+          ToPort: 500
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: udp
+          FromPort: 4500
+          ToPort: 4500
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: 50
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: 51
+          CidrIp: 0.0.0.0/0
+
+  # ==================================================
+  # ======== BANDWIDTH GIT & CODEPIPELINE ============
+  # ==================================================
+  
+  BandwidthCodeCommit:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Sub ${Environment}-Bandwidth
+
+  BandwidthCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Join [ '-', [ !Ref Environment, Bandwidth ] ]
+      ServiceRole: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, CodeBuildRoleArn ] ]
+      Artifacts:
+        Type: CODEPIPELINE
+      BadgeEnabled: false
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Type: LINUX_CONTAINER
+        Image: aws/codebuild/nodejs:6.3.1
+      Source:
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 15
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+  
+  BandwidthCodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn:
+      - BandwidthDeploymentGroup
+      - BandwidthCodeBuildProject
+    Properties:
+      ArtifactStore:
+        Location:
+          Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, ArtifactBucket ] ]
+        Type: S3
+      Name: !Join [ '-', [ !Ref Environment, Bandwidth ] ]
+      RoleArn: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, CodePipelineRoleArn ] ]
+      Stages:
+        - Name: CodeCommit
+          Actions:
+            - Name: BandwidthCodeCommit
+              RunOrder: 1
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: 1
+              Configuration:
+                RepositoryName: !Sub ${Environment}-Bandwidth
+                BranchName: 
+                  Fn::ImportValue:
+                     !Join [ '-', [ !Ref Environment, GitBranch ] ]
+              OutputArtifacts:
+                - Name: CodeCommitArtifact
+        - Name: CodeBuild
+          Actions:
+            - Name: BandwidthCodeBuild
+              RunOrder: 2
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: !Ref BandwidthCodeBuildProject
+              InputArtifacts:
+                - Name: CodeCommitArtifact
+              OutputArtifacts:
+                - Name: CodeBuildArtifact
+        - Name: CodeDeploy
+          Actions:
+            - Name: BandwidthCodeDeploy
+              RunOrder: 3
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CodeDeploy
+                Version: 1
+              Configuration:
+                ApplicationName: !Ref BandwidthApplication
+                DeploymentGroupName: !Ref BandwidthDeploymentGroup
+              InputArtifacts:
+                - Name: CodeBuildArtifact
+  
+  BandwidthApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Join [ '-', [ !Ref Environment, Bandwidth ] ]
+
+  BandwidthDeploymentGroup: 
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties: 
+      ApplicationName: !Ref BandwidthApplication
+      DeploymentConfigName: CodeDeployDefault.OneAtATime
+      Ec2TagFilters: 
+        - Key: Name
+          Value: !Join [ '-', [ !Ref Environment, VPN ] ]
+          Type: KEY_AND_VALUE
+      ServiceRoleArn: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, CodeDeployRoleArn ] ]
+  
+  # =====================================
+  # ======= VPC Peering Routes ==========
+  # =====================================
+  # 
+  # Generated by this script:
+  # 
+  # set +H
+  #
+  # LIST=(
+  #   us-east-1,UsEast1
+  #   us-east-2,UsEast2
+  #   us-west-1,UsWest1
+  #   us-west-2,UsWest2
+  #   ap-south-1,ApSouth1
+  #   ap-northeast-2,ApNortheast2
+  #   ap-southeast-1,ApSoutheast1
+  #   ap-southeast-2,ApSoutheast2
+  #   ap-northeast-1,ApNortheast1
+  #   ca-central-1,CaCentral1
+  #   eu-central-1,EuCentral1
+  #   eu-west-1,EuWest1
+  #   eu-west-2,EuWest2
+  #   eu-west-3,EuWest3
+  #   sa-east-1,SaEast1
+  # )
+  #
+  # for i in "${LIST[@]}"
+  # do
+  #   IFS=',' read A B <<< "${i}"
+  #   echo "PeeringRouteFrom${B}:
+  #   Type: AWS::EC2::Route
+  #   Condition: Is${B}
+  #   Properties:
+  #     DestinationCidrBlock: 192.168.0.0/16
+  #     RouteTableId:
+  #       Fn::ImportValue:
+  #         !Join [ '-', [ !Ref Environment, VpnRouteTableId ] ]
+  #     VpcPeeringConnectionId: !Ref Peer${B}
+  # "
+  # done
+  
+  PeeringRouteFromUsEast1:
+    Type: AWS::EC2::Route
+    Condition: IsUsEast1
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerUsEast1
+
+  PeeringRouteFromUsEast2:
+    Type: AWS::EC2::Route
+    Condition: IsUsEast2
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerUsEast2
+
+  PeeringRouteFromUsWest1:
+    Type: AWS::EC2::Route
+    Condition: IsUsWest1
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerUsWest1
+
+  PeeringRouteFromUsWest2:
+    Type: AWS::EC2::Route
+    Condition: IsUsWest2
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerUsWest2
+
+  PeeringRouteFromApSouth1:
+    Type: AWS::EC2::Route
+    Condition: IsApSouth1
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerApSouth1
+
+  PeeringRouteFromApNortheast2:
+    Type: AWS::EC2::Route
+    Condition: IsApNortheast2
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerApNortheast2
+
+  PeeringRouteFromApSoutheast1:
+    Type: AWS::EC2::Route
+    Condition: IsApSoutheast1
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerApSoutheast1
+
+  PeeringRouteFromApSoutheast2:
+    Type: AWS::EC2::Route
+    Condition: IsApSoutheast2
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerApSoutheast2
+
+  PeeringRouteFromApNortheast1:
+    Type: AWS::EC2::Route
+    Condition: IsApNortheast1
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerApNortheast1
+
+  PeeringRouteFromCaCentral1:
+    Type: AWS::EC2::Route
+    Condition: IsCaCentral1
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerCaCentral1
+
+  PeeringRouteFromEuCentral1:
+    Type: AWS::EC2::Route
+    Condition: IsEuCentral1
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerEuCentral1
+
+  PeeringRouteFromEuWest1:
+    Type: AWS::EC2::Route
+    Condition: IsEuWest1
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerEuWest1
+
+  PeeringRouteFromEuWest2:
+    Type: AWS::EC2::Route
+    Condition: IsEuWest2
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerEuWest2
+
+  PeeringRouteFromEuWest3:
+    Type: AWS::EC2::Route
+    Condition: IsEuWest3
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerEuWest3
+
+  PeeringRouteFromSaEast1:
+    Type: AWS::EC2::Route
+    Condition: IsSaEast1
+    Properties:
+      DestinationCidrBlock: 192.168.0.0/16
+      RouteTableId: !Ref VpnRouteTable
+      VpcPeeringConnectionId: !Ref PeerSaEast1
+
+Outputs:
+
+  VpnInstanceProfile:
+    Value: !Ref VpnInstanceProfile
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, VpnInstanceProfile ] ]
+  VpnSubnetId:
+    Value: !Ref VpnSubnet
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, VpnSubnetId ] ]
+  VpnSecurityGroupId:
+    Value: !Ref VpnSecurityGroup
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, VpnSecurityGroupId ] ]
+  VpnRegion:
+    Value: !FindInMap [ RegionMapping, !Ref "AWS::Region", Subdomain ]
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, VpnRegion ] ]
+  BandwidthDeploymentGroup:
+    Value: !Ref BandwidthDeploymentGroup
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, BandwidthDeploymentGroup ] ]
+  BandwidthApplication:
+    Value: !Ref BandwidthApplication
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, BandwidthApplication ] ]
+  SuricataBucketVpn:
+    Value: !Ref SuricataBucket
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, SuricataBucketVpn ] ]

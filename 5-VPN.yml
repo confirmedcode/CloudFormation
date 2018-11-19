@@ -1,0 +1,1468 @@
+---
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: VPN instance in this region
+
+Parameters:
+  
+  Environment:
+    Type: String
+    Description: Name of the environment to bring up.
+  
+  StrongswanVersion:
+    Type: String
+    Default: 5.7.1
+    
+  SourceId:
+    Type: String 
+  
+  Date:
+    Type: String
+    Description: MMDDYY date of last machine bringup
+    
+  CertAccessSecret:
+    Type: String
+    NoEcho: true
+  
+  # Optional
+  UbuntuAMI:
+    Type: String
+    Description: AMI
+    Default: ""
+  
+  InstanceType:
+    Type: String
+    Description: Instance Type
+    Default: t3.small
+
+Conditions: 
+  
+  OverrideInstanceType: !Not [!Equals [!Ref InstanceType, ""]]
+  
+  OverrideAMI: !Not [!Equals [!Ref UbuntuAMI, ""]]
+
+Mappings: 
+
+  RegionMap: 
+    us-east-1: 
+      AMI: ami-0735ea082a1534cac
+      InstanceType: t3.small
+      EbsOptimized: true
+    us-east-2:
+      AMI: ami-04c305e118636bc7d
+      InstanceType: t3.small
+      EbsOptimized: true
+    us-west-1: 
+      AMI: ami-0f5113ce7686689e9
+      InstanceType: t3.small
+      EbsOptimized: true
+    us-west-2: 
+      AMI: ami-01e0cf6e025c036e4
+      InstanceType: t3.small
+      EbsOptimized: true
+    ap-south-1:
+      AMI: ami-0c6c52d7cf1004825
+      InstanceType: t2.small
+      EbsOptimized: false
+    ap-northeast-2:
+      AMI: ami-0035936492be04cff
+      InstanceType: t2.small
+      EbsOptimized: false
+    ap-southeast-1:
+      AMI: ami-0d97809b54a5f01ba
+      InstanceType: t3.small
+      EbsOptimized: true
+    ap-southeast-2:
+      AMI: ami-05162512c82cb460f
+      InstanceType: t2.small
+      EbsOptimized: false
+    ap-northeast-1:
+      AMI: ami-06317ca3b39714f7e
+      InstanceType: t3.small
+      EbsOptimized: true
+    ca-central-1:
+      AMI: ami-0a5443ed7b0a45901
+      InstanceType: t3.small
+      EbsOptimized: true
+    eu-central-1:
+      AMI: ami-0dd0be70cc0d493b7
+      InstanceType: t3.small
+      EbsOptimized: true
+    eu-west-1:
+      AMI: ami-00b36349b3dba2ec3
+      InstanceType: t3.small
+      EbsOptimized: true
+    eu-west-2:
+      AMI: ami-06f77073d7dc4c48a
+      InstanceType: t3.small
+      EbsOptimized: true
+    eu-west-3:
+      AMI: ami-0b26151106502588d
+      InstanceType: t2.small
+      EbsOptimized: false
+    sa-east-1:
+      AMI: ami-0f7c76bfc85e5b4ea
+      InstanceType: t2.small
+      EbsOptimized: false
+
+Resources:
+
+  VpnInstance:
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT20M
+    Properties:
+      InstanceType: !If [OverrideInstanceType, !Ref InstanceType, !FindInMap [RegionMap, !Ref "AWS::Region", InstanceType]]
+      InstanceInitiatedShutdownBehavior: stop
+      DisableApiTermination: false
+      EbsOptimized: !FindInMap [RegionMap, !Ref "AWS::Region", EbsOptimized]
+      CreditSpecification:
+        CPUCredits: unlimited
+      ImageId: !If [OverrideAMI, !Ref UbuntuAMI, !FindInMap [RegionMap, !Ref "AWS::Region", AMI]]
+      NetworkInterfaces:
+      - DeleteOnTermination: true
+        Description: Primary network interface
+        DeviceIndex: 0
+        SubnetId: 
+          Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, VpnSubnetId ] ]
+        GroupSet:
+        - Fn::ImportValue:
+              !Join [ '-', [ !Ref Environment, VpnSecurityGroupId ] ]
+      Monitoring: true
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, VPN ] ]
+      - Key: Environment
+        Value: !Ref Environment
+      IamInstanceProfile:
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, VpnInstanceProfile ] ]
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash -ex
+            # Install Updates and Python SetupTools (for easy_install)
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update && apt-get dist-upgrade -yq
+            apt-get -yq install python-setuptools
+            # Install CloudFormation Bootstrap
+            easy_install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz
+            ln -s /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup /etc/init.d/cfn-hup
+            chmod +x /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup
+            update-rc.d cfn-hup defaults
+            # Run CloudFormation Init
+            cfn-init -c default --stack ${AWS::StackName} --resource VpnInstance --region ${AWS::Region}
+            # Signal success to CloudFormation on reboot
+            echo "@reboot root /usr/local/bin/cfn-signal --success true --stack ${AWS::StackName} --resource VpnInstance --region ${AWS::Region} 2>&1 | /usr/bin/logger -t cfn_success" >> /etc/cron.d/success_on_reboot            
+            # Reboot to pick up latest patches
+            reboot
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets: 
+          default:
+            - "unattended-upgrades"
+            - "setup-cfn-hup"
+            - "set-region-and-environment"
+            - "install-aws-cloudwatch-and-cli"
+            - "enable-swap"
+            - "load-network-config"
+            - "install-node"
+            - "install-suricata"
+            - "install-strongswan"
+            - "copy-certs"
+            - "install-aws-codedeploy"
+        unattended-upgrades:
+          files:
+            '/etc/apt/apt.conf.d/10periodic':
+              content: |
+                APT::Periodic::Update-Package-Lists "1";
+                APT::Periodic::Download-Upgradeable-Packages "1";
+                APT::Periodic::AutocleanInterval "7";
+                APT::Periodic::Unattended-Upgrade "1";
+              mode: '000644'
+              owner: root
+              group: root
+            '/etc/apt/apt.conf.d/50unattended-upgrades':
+              content: |
+                Unattended-Upgrade::Allowed-Origins {
+                  "${distro_id}:${distro_codename}";
+                  "${distro_id}:${distro_codename}-security";
+                  "${distro_id}ESM:${distro_codename}";
+                };
+              mode: '000644'
+              owner: root
+              group: root
+        setup-cfn-hup:
+           files:
+             '/etc/cfn/cfn-hup.conf':
+               content: !Sub |
+                 [main]
+                 stack=${AWS::StackId}
+                 region=${AWS::Region}
+                 interval=1
+               mode: '000400'
+               owner: root
+               group: root
+             '/etc/cfn/hooks.d/cfn-auto-reloader.conf':
+               content: !Sub |
+                 [cfn-auto-reloader-hook]
+                 triggers=post.update
+                 path=Resources.VpnInstance.Metadata.AWS::CloudFormation::Init
+                 action=cfn-init --verbose --stack=${AWS::StackName} --region=${AWS::Region} --resource=VpnInstance --configsets updateable
+                 runas=root
+               mode: '000400'
+               owner: root
+               group: root
+           services:
+             sysvinit:
+               cfn-hup:
+                 enabled: true
+                 ensureRunning: true
+                 files:
+                 - '/etc/cfn/cfn-hup.conf'
+                 - '/etc/cfn/hooks.d/cfn-auto-reloader.conf'
+        set-region-and-environment:
+          commands:
+            0_set_region:
+              command: !Sub echo AWS_DEFAULT_REGION=${AWS::Region} >> /etc/environment
+            1_set_environment:
+              command: !Sub |
+                echo ENVIRONMENT=${Environment} >> /etc/environment
+                printf "${Environment}" > /home/ubuntu/environment
+            2_set_eth_device:
+              command: !Sub |
+                ETHDEVICE=$(ifconfig -s | grep BMRU | head -n 1 | cut -d" " -f1)
+                printf "$ETHDEVICE" > /home/ubuntu/ethdevice
+                echo ETHDEVICE=$ETHDEVICE >> /etc/environment
+        install-aws-cloudwatch-and-cli:
+          packages:
+            apt:
+              awscli: []
+          files:
+            '/home/ubuntu/cloudwatch.config':
+              content: !Sub |
+                {
+                  "logs": {
+                    "logs_collected": {
+                      "files": {
+                        "collect_list": [
+                          {
+                            "file_path": "/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-cloudwatch-logs"
+                          },
+                          {
+                            "file_path": "/var/log/auth.log",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-authlog"
+                          },
+                          {
+                            "file_path": "/var/log/amazon/ssm/amazon-ssm-agent.log",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-aws-ssm"
+                          },
+                          {
+                            "file_path": "/var/log/cfn-hup.log",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-cfn-hup"
+                          },
+                          {
+                            "file_path": "/var/log/cfn-init.log",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-cfn-init"
+                          },
+                          {
+                            "file_path": "/var/log/cfn-init-cmd.log",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-cfn-init-cmd"
+                          },
+                          {
+                            "file_path": "/var/log/cloud-init.log",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-cloud-init"
+                          },
+                          {
+                            "file_path": "/var/log/cloud-init-output.log",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-cloud-init-output"
+                          },
+                          {
+                            "file_path": "/var/log/aws/codedeploy-agent/codedeploy-agent.log",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-aws-codedeploy-agent"
+                          },
+                          {
+                            "file_path": "/opt/codedeploy-agent/deployment-root/deployment-logs/codedeploy-agent-deployments.log",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-aws-codedeploy-deployments"
+                          },
+                          {
+                            "file_path": "/home/ubuntu/bandwidth-node.log",
+                            "log_group_name": "${Environment}-VPN-Node",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}"
+                          },
+                          {
+                            "file_path": "/var/log/suricata/fast.log",
+                            "log_group_name": "${Environment}-VPN-Suricata",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-fast"
+                          },
+                          {
+                            "file_path": "/var/log/suricata/suricata.log",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-suricata-log"
+                          },
+                          {
+                            "file_path": "/var/log/syslog",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-syslog"
+                          },
+                          {
+                            "file_path": "/var/log/unattended-upgrades/unattended-upgrades.log",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-unattended-upgrades"
+                          },
+                          {
+                            "file_path": "/var/log/unattended-upgrades/unattended-upgrades-dpkg.log",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-unattended-upgrades-dpkg"
+                          },
+                          {
+                            "file_path": "/var/run/reboot-required.pkgs",
+                            "log_group_name": "${Environment}-VPN",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-reboot-required"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "metrics": {
+                    "append_dimensions": {
+                      "InstanceId": "${!aws:InstanceId}"
+                    },
+                    "metrics_collected": {
+                      "cpu": {
+                        "measurement": [
+                          "cpu_usage_active",
+                          "cpu_usage_iowait",
+                          "cpu_usage_user",
+                          "cpu_usage_system"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "totalcpu": true
+                      },
+                      "disk": {
+                        "measurement": [
+                          "used_percent",
+                          "inodes_free"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "resources": [
+                          "/"
+                        ]
+                      },
+                      "diskio": {
+                        "measurement": [
+                          "io_time"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "resources": [
+                          "/"
+                        ]
+                      },
+                      "mem": {
+                        "measurement": [
+                          "mem_used_percent"
+                        ],
+                        "metrics_collection_interval": 60
+                      },
+                      "swap": {
+                        "measurement": [
+                          "swap_used_percent"
+                        ],
+                        "metrics_collection_interval": 60
+                      }
+                    }
+                  }
+                }
+              mode: '000644'
+              owner: root
+              group: root
+          commands:
+            0_install_cloudwatch:
+              command: |
+                apt-get -yq install unzip
+                wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/linux/amd64/latest/AmazonCloudWatchAgent.zip -P /tmp
+                unzip /tmp/AmazonCloudWatchAgent.zip -d /home/ubuntu/cloudwatch_agent
+                cd /home/ubuntu/cloudwatch_agent
+                ./install.sh
+                /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/home/ubuntu/cloudwatch.config -s
+        enable-swap:
+          commands:
+            0_enable_swap:
+              command: |
+                dd if=/dev/zero of=/var/spool/swap bs=1M count=1k
+                mkswap /var/spool/swap
+                chmod 0600 /var/spool/swap
+                swapon /var/spool/swap
+            1_persist_on_reboot:
+              command: |
+                echo "/var/spool/swap swap swap defaults 0 0" >> /etc/fstab
+        load-network-config:
+          packages:
+            apt:
+              iptables-persistent: []
+          files:
+            '/etc/iptables/rules.v4':
+              content: |
+                *mangle
+                # Ensure all "mangle" chains default to ACCEPT, essentially a no-op.
+                :PREROUTING ACCEPT [0:0]
+                :INPUT ACCEPT [0:0]
+                :FORWARD ACCEPT [0:0]
+                :OUTPUT ACCEPT [0:0]
+                :POSTROUTING ACCEPT [0:0]
+                COMMIT
+                *nat
+                # Ensure NAT chains default to ACCEPT to let packets through
+                :PREROUTING ACCEPT [0:0]
+                :POSTROUTING ACCEPT [0:0]
+                # For traffic coming from VPN clients that's *not* IPSec encrypted (because it's been decrypted by this VPN server),
+                # apply "MASQUERADE" NAT to give it a source IP of this host, instead of its private Virtual IP. Without this rule,
+                # remote hosts wouldn't be able to get responses back to the right VPN server (this one).
+                -A POSTROUTING -s 10.0.0.0/8 -m policy --pol none --dir out -j MASQUERADE
+                COMMIT
+                *filter
+                # Default to dropping everything coming into or being forwarded by this host. A safe default that we then add exceptions to.
+                :INPUT DROP [0:0]
+                :FORWARD DROP [0:0]
+                # For output traffic, just let it through so we don't have to go crazy figuring out what services on this host need
+                # access to the public internet.
+                :OUTPUT ACCEPT [0:0]
+                # Accept all loopback traffic
+                -A INPUT -i lo -j ACCEPT
+                # Accept all traffic from established connections. For example, TCP connections, DNS replies, ICMP ping replies, etc.
+                -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+                # Accept all IPSec VPN traffic using IP protocols 50, 51.
+                -A INPUT -p esp -j ACCEPT
+                -A INPUT -p ah -j ACCEPT
+                # rate limit ICMP traffic per source
+                -A INPUT -p icmp --icmp-type echo-request -m hashlimit --hashlimit-upto 5/s --hashlimit-mode srcip --hashlimit-srcmask 32 --hashlimit-name icmp-echo-drop -j ACCEPT
+                # Accept all IKE traffic and IPSec NAT-T UDP encapsulation
+                -A INPUT -p udp -m multiport --dports 500,4500 -j ACCEPT
+                # Do not accept incoming SSH connections
+                # -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -j ACCEPT
+                # Accept traffic from VPN clients intended for this host
+                -A INPUT -p ipencap -m policy --dir in --pol ipsec --proto esp -j ACCEPT
+                # Send all traffic from and to VPN clients to Suricata for analysis
+                -A FORWARD -s 10.0.0.0/8 -j NFQUEUE --queue-num 0
+                -A FORWARD -d 10.0.0.0/8 -j NFQUEUE --queue-num 0
+                # Block traffic *between* VPN clients
+                -A FORWARD -s 10.0.0.0/8 -d 10.0.0.0/8 -j DROP
+                # Forward all traffic from established connections. For example, TCP connections, DNS replies, ICMP ping replies, etc.
+                -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+                # Block CIFS (MS LAN file sharing), because it's probably up to no good
+                -A FORWARD -p tcp --dport 445 -j DROP
+                # Block NETBIOS, because it's probably up to no good
+                -A FORWARD -p udp -m multiport --ports 137,138 -j DROP
+                -A FORWARD -p tcp -m multiport --ports 137,139 -j DROP
+                # Allow new connections from VPN clients to remote hosts
+                -A FORWARD -m conntrack --ctstate NEW -s 10.0.0.0/8 -m policy --pol ipsec --dir in -j ACCEPT
+                COMMIT
+            '/etc/sysctl.conf':
+              content: |
+                net.ipv4.ip_forward=1
+                net.ipv4.conf.all.forwarding=1
+                net.ipv4.conf.all.accept_source_route=0
+                net.ipv4.conf.default.accept_source_route=0
+                net.ipv4.conf.all.accept_redirects=0
+                net.ipv4.conf.default.accept_redirects=0
+                net.ipv4.conf.all.secure_redirects=0
+                net.ipv4.conf.default.secure_redirects=0
+                net.ipv4.icmp_ignore_bogus_error_responses=1
+                net.ipv4.conf.all.rp_filter=1
+                net.ipv4.conf.default.rp_filter=1
+                net.ipv4.conf.all.send_redirects=0
+          commands:
+            0_reload_network:
+              command: |
+                ifdown lo:100 && ifup lo:100
+                sysctl -p
+                echo 1 > /proc/sys/net/ipv4/route/flush
+          services: 
+            sysvinit: 
+              netfilter-persistent:   
+                ensureRunning: true
+                enabled: true
+        install-node:
+          commands:
+            1_setup:
+              command: curl -sL https://deb.nodesource.com/setup_6.x | bash -
+            2_install:
+              command: apt-get install -yq nodejs
+        install-suricata:
+          files:
+            '/etc/default/suricata':
+              content: |
+                # start the server in the init.d script
+                RUN=yes
+                # user that will run suricata in the init.d script (used for dropping privileges only)
+                RUN_AS_USER=
+                SURCONF=/etc/suricata/suricata.yaml
+                LISTENMODE=nfqueue
+                NFQUEUE="-q 0"
+                PIDFILE=/var/run/suricata.pid
+            '/etc/modules-load.d/suricata.conf':
+              content: |
+                nfnetlink
+                nfnetlink_queue
+            '/etc/suricata/suricata.yaml':
+              content: |
+                %YAML 1.1
+                ---
+                vars:
+                    address-groups:
+                        CLIENT_NET: '[10.0.0.0/8]'
+                        HOME_NET: '[10.0.0.0/8]'
+                        EXTERNAL_NET: any
+                        HTTP_SERVERS: any
+                        SMTP_SERVERS: any
+                        SQL_SERVERS: any
+                        DNS_SERVERS: any
+                        TELNET_SERVERS: any
+                        AIM_SERVERS: any
+                        DNP3_SERVER: any
+                        DNP3_CLIENT: any
+                        MODBUS_CLIENT: any
+                        MODBUS_SERVER: any
+                        ENIP_CLIENT: any
+                        ENIP_SERVER: any
+                    port-groups:
+                        HTTP_PORTS: '[80,81,311,591,593,901,1220,1414,1830,2301,2381,2809,3128,3702,4343,5250,7001,7145,7510,7777,7779,8000,8008,8014,8028,8080,8088,8118,8123,8180,8181,8243,8280,8800,8888,8899,9080,9090,9091,9443,9999,11371,55555]'
+                        ORACLE_PORTS: 1521
+                        SHELLCODE_PORTS: '!80'
+                        SSH_PORTS: 22
+                        DNP3_PORTS: 20000
+                        MODBUS_PORTS: 502
+                        FILE_DATA_PORTS: '[$HTTP_PORTS,110,143]'
+                        FTP_PORTS: 21
+                default-rule-path: /var/lib/suricata/rules
+                rule-files:
+                    - suricata.rules
+                default-log-dir: /var/log/suricata/
+                stats:
+                    enabled: no
+                    interval: 8
+                outputs:
+                    -
+                        fast:
+                            enabled: yes
+                            filename: fast.log
+                            append: yes
+                    -
+                        eve-log:
+                            enabled: no
+                            filetype: unix_stream
+                            filename: /tmp/eve.sock
+                            types: [{alert: {metadata: yes, tagged-packets: yes}}]
+                    -
+                        alert-debug:
+                            enabled: no
+                            filename: alert-debug.log
+                            append: yes
+                    -
+                        stats:
+                            enabled: no
+                            filename: stats.log
+                            append: yes
+                            totals: yes
+                            threads: no
+                    -
+                        drop:
+                            enabled: no
+                            filename: drop.log
+                            append: yes
+                logging:
+                    default-log-level: notice
+                    default-output-filter: null
+                    outputs:
+                        -
+                            console: {enabled: yes}
+                        -
+                            file: {enabled: yes, level: info, filename: /var/log/suricata/suricata.log}
+                        -
+                            syslog: {enabled: no, facility: local5, format: '[%i] <%d> -- '}
+                af-packet:
+                    -
+                        interface: eth0
+                        cluster-id: 99
+                        cluster-type: cluster_flow
+                        defrag: yes
+                    -
+                        interface: default
+                        cluster-id: 99
+                        cluster-type: cluster_flow
+                        defrag: yes
+                pcap:
+                    -
+                        interface: eth0
+                    -
+                        interface: default
+                pcap-file:
+                    checksum-checks: auto
+                app-layer:
+                    protocols:
+                        tls:
+                            enabled: yes
+                            detection-ports: {dp: 443}
+                        dcerpc:
+                            enabled: yes
+                        ftp:
+                            enabled: yes
+                        ssh:
+                            enabled: yes
+                        smtp:
+                            enabled: yes
+                            mime: {decode-mime: yes, decode-base64: yes, decode-quoted-printable: yes, header-value-depth: 2000, extract-urls: yes, body-md5: no}
+                            inspected-tracker: {content-limit: 100000, content-inspect-min-size: 32768, content-inspect-window: 4096}
+                        imap:
+                            enabled: detection-only
+                        msn:
+                            enabled: detection-only
+                        smb:
+                            enabled: yes
+                            detection-ports: {dp: '139, 445'}
+                        nfs:
+                            enabled: no
+                        dns:
+                            tcp: {enabled: yes, detection-ports: {dp: 53}}
+                            udp: {enabled: yes, detection-ports: {dp: 53}}
+                        http:
+                            enabled: yes
+                            libhtp: {default-config: {personality: IDS, request-body-limit: 100kb, response-body-limit: 100kb, request-body-minimal-inspect-size: 32kb, request-body-inspect-window: 4kb, response-body-minimal-inspect-size: 40kb, response-body-inspect-window: 16kb, response-body-decompress-layer-limit: 2, http-body-inline: auto, double-decode-path: no, double-decode-query: no}, server-config: null}
+                        modbus:
+                            enabled: no
+                            detection-ports: {dp: 502}
+                            stream-depth: 0
+                        dnp3:
+                            enabled: no
+                            detection-ports: {dp: 20000}
+                        enip:
+                            enabled: no
+                            detection-ports: {dp: 44818, sp: 44818}
+                        ntp:
+                            enabled: no
+                asn1-max-frames: 256
+                coredump:
+                    max-dump: unlimited
+                host-mode: auto
+                unix-command:
+                    enabled: auto
+                legacy:
+                    uricontent: enabled
+                engine-analysis:
+                    rules-fast-pattern: yes
+                    rules: yes
+                pcre:
+                    match-limit: 3500
+                    match-limit-recursion: 1500
+                host-os-policy:
+                    windows:
+                        - 0.0.0.0/0
+                    bsd: []
+                    bsd-right: []
+                    old-linux: []
+                    linux: []
+                    old-solaris: []
+                    solaris: []
+                    hpux10: []
+                    hpux11: []
+                    irix: []
+                    macos: []
+                    vista: []
+                    windows2k3: []
+                defrag:
+                    memcap: 32mb
+                    hash-size: 65536
+                    trackers: 65535
+                    max-frags: 65535
+                    prealloc: yes
+                    timeout: 60
+                flow:
+                    memcap: 128mb
+                    hash-size: 65536
+                    prealloc: 10000
+                    emergency-recovery: 30
+                vlan:
+                    use-for-tracking: true
+                flow-timeouts:
+                    default:
+                        new: 30
+                        established: 300
+                        closed: 0
+                        bypassed: 100
+                        emergency-new: 10
+                        emergency-established: 100
+                        emergency-closed: 0
+                        emergency-bypassed: 50
+                    tcp:
+                        new: 60
+                        established: 600
+                        closed: 60
+                        bypassed: 100
+                        emergency-new: 5
+                        emergency-established: 100
+                        emergency-closed: 10
+                        emergency-bypassed: 50
+                    udp:
+                        new: 30
+                        established: 300
+                        bypassed: 100
+                        emergency-new: 10
+                        emergency-established: 100
+                        emergency-bypassed: 50
+                    icmp:
+                        new: 30
+                        established: 300
+                        bypassed: 100
+                        emergency-new: 10
+                        emergency-established: 100
+                        emergency-bypassed: 50
+                stream:
+                    memcap: 64mb
+                    checksum-validation: yes
+                    inline: auto
+                    reassembly:
+                        memcap: 256mb
+                        depth: 1mb
+                        toserver-chunk-size: 2560
+                        toclient-chunk-size: 2560
+                        randomize-chunk-size: yes
+                host:
+                    hash-size: 4096
+                    prealloc: 1000
+                    memcap: 32mb
+                decoder:
+                    teredo:
+                        enabled: true
+                detect:
+                    profile: medium
+                    custom-values:
+                        toclient-groups: 3
+                        toserver-groups: 25
+                    sgh-mpm-context: auto
+                    inspection-recursion-limit: 3000
+                    prefilter:
+                        default: mpm
+                    grouping: null
+                    profiling:
+                        grouping:
+                            dump-to-disk: false
+                            include-rules: false
+                            include-mpm-stats: false
+                mpm-algo: auto
+                spm-algo: auto
+                threading:
+                    set-cpu-affinity: no
+                    cpu-affinity:
+                        -
+                            management-cpu-set: {cpu: [0]}
+                        -
+                            receive-cpu-set: {cpu: [0]}
+                        -
+                            worker-cpu-set: {cpu: [all], mode: exclusive, prio: {low: [0], medium: [1-2], high: [3], default: medium}}
+                    detect-thread-ratio: 1
+                luajit:
+                    states: 128
+                profiling:
+                    rules:
+                        enabled: yes
+                        filename: rule_perf.log
+                        append: yes
+                        limit: 10
+                        json: yes
+                    keywords:
+                        enabled: yes
+                        filename: keyword_perf.log
+                        append: yes
+                    rulegroups:
+                        enabled: yes
+                        filename: rule_group_perf.log
+                        append: yes
+                    packets:
+                        enabled: yes
+                        filename: packet_stats.log
+                        append: yes
+                        csv:
+                            enabled: no
+                            filename: packet_stats.csv
+                    locks:
+                        enabled: no
+                        filename: lock_stats.log
+                        append: yes
+                    pcap-log:
+                        enabled: no
+                        filename: pcaplog_stats.log
+                        append: yes
+                nfq: null
+                nflog:
+                    -
+                        group: 2
+                        buffer-size: 18432
+                    -
+                        group: default
+                        qthreshold: 1
+                        qtimeout: 100
+                        max-size: 20000
+                capture: null
+                pfring:
+                    -
+                        interface: eth0
+                        threads: 1
+                        cluster-id: 99
+                        cluster-type: cluster_flow
+                    -
+                        interface: default
+                        threads: 1
+                        cluster-id: 99
+                        cluster-type: cluster_flow
+            '/etc/suricata/update.yaml':
+              content: !Sub |
+                disable-conf: /etc/suricata/disable.conf
+                enable-conf: /etc/suricata/enable.conf
+                drop-conf: /etc/suricata/drop.conf
+                modify-conf: /etc/suricata/modify.conf
+                ignore:
+                  - "*deleted.rules"
+                sources:
+                  - https://rules.emergingthreats.net/open/suricata-%(__version__)s/emerging.rules.tar.gz
+                  - https://sslbl.abuse.ch/blacklist/sslblacklist.rules
+                local:
+                  - /etc/suricata/local-rules/confirmed.rules
+                reload-command: sudo suricatasc -c reload-rules
+            '/home/ubuntu/suricata-check.sh':
+              content: !Sub
+                - |
+                  #!/bin/bash
+                  set -ex
+                  printf "Suricata Rules Conf Check\n";
+                  if pgrep suricata-update >/dev/null 2>&1
+                    then
+                      echo "suricata-update already running. Quitting.";
+                      exit 0;
+                  fi
+                  printf "Updating Rules from S3\n";
+                  LOWERCASED_BUCKET=`echo ${SuricataBucket} | awk '{print tolower($0)}'`;
+                  REGION=`aws s3api get-bucket-location --bucket $LOWERCASED_BUCKET --output text`;
+                  if [ "$REGION" = "None" ]; then
+                     REGION="us-east-1"
+                  fi
+                  aws s3 cp s3://$LOWERCASED_BUCKET/confirmed.rules /etc/suricata/local-rules/confirmed.rules --region $REGION
+                  aws s3 cp s3://$LOWERCASED_BUCKET/drop.conf /etc/suricata/drop.conf --region $REGION
+                  aws s3 cp s3://$LOWERCASED_BUCKET/disable.conf /etc/suricata/disable.conf --region $REGION
+                  aws s3 cp s3://$LOWERCASED_BUCKET/enable.conf /etc/suricata/enable.conf --region $REGION
+                  aws s3 cp s3://$LOWERCASED_BUCKET/modify.conf /etc/suricata/modify.conf --region $REGION
+                  printf "Running update\n";
+                  /usr/bin/suricata-update --no-test;
+                - SuricataBucket:
+                    Fn::ImportValue:
+                       !Join [ '-', [ !Ref Environment, SuricataBucketVpn ] ]
+              mode: '000544'
+              owner: ubuntu
+              group: ubuntu
+            '/etc/cron.d/suricata_check':
+              content: "*/15 * * * * root /home/ubuntu/suricata_check.sh 2>&1 | /usr/bin/logger -t suricata_check\n"
+              mode: '000644'
+              owner: root
+              group: root
+          commands:
+            0_replace_eth_device:
+              command: |
+                ETHDEVICE=$(cat /home/ubuntu/ethdevice)
+                sed -i "s/eth0/$ETHDEVICE/g" /etc/suricata/suricata.yaml
+            1_load_nfqueue:
+              command: |
+                /sbin/modprobe nfnetlink_queue
+            2_apt_get:
+              command: |
+                add-apt-repository ppa:oisf/suricata-stable --yes
+                apt-get update
+                apt-get install -yq --force-yes -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" suricata
+                apt-get install -yq python-pip
+                pip install suricata-update
+            3_do_update:
+              command: /home/ubuntu/suricata-check.sh
+              env:
+                PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        install-strongswan:
+          packages:
+            apt:
+              libgmp3-dev: []
+              libssl-dev: []
+          files:
+            '/etc/ipsec.conf':
+              content: !Sub
+                - |
+                  config setup
+                      uniqueids=never
+
+                  conn %default
+                      fragmentation=yes
+                      rekey=no
+                      dpdaction=clear
+                      keyexchange=ikev2
+                      compress=yes
+                      dpddelay=35s
+
+                      ike=aes128gcm16-prfsha512-ecp256,aes128-sha2_512-prfsha512-ecp256,aes128-sha2_384-prfsha384-ecp256!
+                      esp=aes128gcm16-ecp256,aes128-sha2_512-prfsha512-ecp256!
+
+                      left=%any
+                      leftauth=pubkey
+                      leftupdown=/home/ubuntu/bandwidth/run_bandwidth_check.sh
+                      leftid=www-${SourceId}.${Domain}
+                      leftcert=www-${SourceId}.${Domain}.crt
+                      leftsendcert=always
+                      leftsubnet=0.0.0.0/0
+
+                      right=%any
+                      rightauth=pubkey
+                      rightsourceip=10.0.0.0/8
+                      rightdns=1.1.1.1,1.0.0.1
+
+                  conn ikev2-pubkey
+                      auto=add
+                - Domain: 
+                    Fn::ImportValue:
+                      !Sub ${Environment}-Domain
+                  SourceId: !Ref SourceId
+            '/etc/strongswan.conf':
+              content: |
+                charon {
+                	load_modular = yes
+                	plugins {
+                		include strongswan.d/charon/*.conf
+                	}
+                	user = strongswan
+                	group = strongswan
+                	filelog {
+                		stdout {
+                			default = 1
+                      cfg = -1
+                      ike = -1
+                      job = -1
+                      knl = -1
+                      enc = -1
+                      net = -1
+                      mgr = -1
+                		}
+                		stderr {
+                			default = 1
+                		}
+                	}
+                	syslog {
+                		auth {
+                			default = 1
+                      cfg = -1
+                      ike = -1
+                      job = -1
+                      knl = -1
+                      enc = -1
+                      net = -1
+                      mgr = -1
+                		}
+                		daemon {
+                			default = 1
+                      cfg = -1
+                      ike = -1
+                      job = -1
+                      knl = -1
+                      enc = -1
+                      net = -1
+                      mgr = -1
+                		}
+                	}
+                }
+                include strongswan.d/*.conf
+            '/etc/strongswan.d/eap-radius.conf':
+              content: !Sub |
+                charon {
+                  plugins {
+                    eap-radius {
+                      accounting = yes
+                      accounting_interval = 0
+                      accounting_close_on_timeout = no
+                      server = helper.${Environment}-private
+                      secret = confirmed9182381283JiJsaiwj1
+                      sockets = 3
+                    }
+                  }
+                }
+            '/lib/systemd/system/strongswan.service':
+              content: |
+                [Unit]
+                Description=strongSwan IPsec services
+                Wants=network-online.target
+                After=network-online.target
+
+                [Service]
+                Type=forking
+                Restart=on-failure
+                ExecStartPre=/bin/mkdir -p /var/lock/subsys
+                Environment="PIDFILE=/var/run/charon.pid"
+                ExecStart=/usr/sbin/ipsec start
+                ExecStop=/usr/sbin/ipsec stop
+                ExecStopPost=/bin/rm -f /var/run/charon.pid /var/run/starter.charon.pid
+
+                [Install]
+                WantedBy=multi-user.target
+            '/home/ubuntu/vpn_status.sh':
+              content: !Sub |
+                set -ex
+                printf "Setting environmental variables\n"
+                export AWS_DEFAULT_REGION=${AWS::Region}
+
+                printf "Clearing previous status\n"
+                sudo rm -f /tmp/vpn_status
+
+                printf "Getting instance ID and type\n"
+                INSTANCE_ID=$(ec2metadata --instance-id)
+              
+                printf "Saving VPN status\n"
+                sudo ipsec stroke statusall-nb | grep Virtual -A 2 > /tmp/vpn_status
+
+                if [ -s /tmp/vpn_status ]; then
+                	printf "Got VPN status, publishing number of clients\n"
+                  IPV4_ONLINE=$(cat /tmp/vpn_status | grep 10.0.0.0/8 | awk '{print $2}' | cut -d '/' -f 2)
+                	IPV4_OFFLINE=$(cat /tmp/vpn_status | grep 10.0.0.0/8 | awk '{print $2}' | cut -d '/' -f 3)
+                	printf "IPV4 Online- $IPV4_ONLINE\n"
+                	printf "IPV4 Offline- $IPV4_OFFLINE\n"
+                	aws cloudwatch put-metric-data --metric-name "IPv4 Online" --namespace CVPN/VPN --unit Count --value $IPV4_ONLINE --dimensions Environment=${Environment},InstanceId=$INSTANCE_ID,InstanceType=${InstanceType}
+                	aws cloudwatch put-metric-data --metric-name "IPv4 Online Aggregated" --namespace CVPN/VPN --unit Count --value $IPV4_ONLINE --dimensions Environment=${Environment},Type=IPV4
+                	aws cloudwatch put-metric-data --metric-name "IPv4 Offline" --namespace CVPN/VPN --unit Count --value $IPV4_OFFLINE --dimensions Environment=${Environment},InstanceId=$INSTANCE_ID,InstanceType=${InstanceType}
+                else
+                	printf "Failed to get VPN status, reporting failure\n"
+                	aws cloudwatch put-metric-data --metric-name "VPN Down" --namespace CVPN/VPN --unit Count --value 1 --dimensions Environment=${Environment},InstanceId=$INSTANCE_ID,InstanceType=${InstanceType}
+                fi
+
+                printf "Getting Ping Status\n"
+                PING=$(timeout 3 ping -c1 google-public-dns-a.google.com | tail -1 | awk '{print $4}' | cut -d '/' -f 2)
+                echo $PING
+                if [ "$PING" = "" ]; then
+                	printf "Ping failed or timed out after 3 seconds, reporting failure\n"
+                	aws cloudwatch put-metric-data --metric-name "Ping Timeout >3s" --namespace CVPN/VPN --unit Count --value 1 --dimensions Environment=${Environment},InstanceId=$INSTANCE_ID,InstanceType=${InstanceType}
+                else
+                	printf "Ping succeeded with result $PING ms. Publishing.\n"
+                	aws cloudwatch put-metric-data --metric-name "Ping" --namespace CVPN/VPN --unit Milliseconds --value $PING --dimensions Environment=${Environment},InstanceId=$INSTANCE_ID,InstanceType=${InstanceType}
+                fi
+              mode: '000544'
+              owner: ubuntu
+              group: ubuntu
+            '/etc/cron.d/vpn_status':
+              content: "* * * * * root /home/ubuntu/vpn_status.sh 2>&1 | /usr/bin/logger -t vpn_status\n"
+              mode: '000644'
+              owner: root
+              group: root
+          commands:
+            0_create_strongswan_user_group:
+              command: |
+                groupadd strongswan
+                useradd -g strongswan strongswan
+            1_download_strongswan:
+              command: !Sub wget http://download.strongswan.org/strongswan-${StrongswanVersion}.tar.bz2 --directory-prefix=/home/ubuntu/
+            2_unpack_strongswan:
+              command: !Sub tar xjf /home/ubuntu/strongswan-${StrongswanVersion}.tar.bz2 -C /tmp
+            3_configure_strongswan:
+              cwd: !Sub /tmp/strongswan-${StrongswanVersion}
+              command: ./configure --prefix=/usr --sysconfdir=/etc --enable-gcm --enable-openssl --with-capabilities=native --enable-eap-radius
+            4_install_strongswan:
+              cwd: !Sub /tmp/strongswan-${StrongswanVersion}
+              command: make && make install | grep -v INFO
+            5_enable_strongswan_service:
+              command: |
+                systemctl enable strongswan && systemctl daemon-reload && systemctl start strongswan
+            6_set_sudoers:
+              command: |
+                echo 'strongswan ALL=NOPASSWD: /sbin/tc, /sbin/iptables' | EDITOR='tee -a' visudo
+                echo 'node ALL=NOPASSWD: /usr/sbin/ipsec' | EDITOR='tee -a' visudo
+            7_set_log:
+              command: |
+                touch /home/ubuntu/bandwidth-node.log
+                chown strongswan:strongswan /home/ubuntu/bandwidth-node.log
+                chmod 666 /home/ubuntu/bandwidth-node.log
+        copy-certs:
+          commands:
+            0_get_from_admin:
+              command: !Sub
+                - > 
+                    curl --header "Content-Type: application/json"
+                    --request POST
+                    --data '{"secret":"${Secret}","id":"${SourceId}"}'
+                    http://admin.${Environment}-private/get-server-certificate -s |
+                    python -c
+                    "import sys, json; data = json.load(sys.stdin);
+                    secrets = open('/etc/ipsec.secrets', 'w');
+                    secrets.write(': ECDSA server.key');
+                    secrets.close();
+                    serverkey = open('/etc/ipsec.d/private/server.key','w');
+                    serverkey.write(data['serverkey']);
+                    serverkey.close();
+                    servercert = open('/etc/ipsec.d/certs/www-${SourceId}.${Domain}.crt','w');
+                    servercert.write(data['servercert']);
+                    servercert.close();
+                    cacert = open('/etc/ipsec.d/cacerts/ca.crt','w');
+                    cacert.write(data['cacert']);
+                    cacert.close();" \> /dev/null 2\>&
+                - Secret: !Ref CertAccessSecret
+                  SourceId: !Ref SourceId
+                  Environment: !Ref Environment
+                  Domain: 
+                    Fn::ImportValue:
+                      !Sub ${Environment}-Domain
+            1_set_permissions:
+              command: !Sub
+                - |
+                  chmod 600 /etc/ipsec.secrets
+                  chmod 600 /etc/ipsec.d/private/server.key
+                  chmod 600 /etc/ipsec.d/certs/www-${SourceId}.{Domain}.crt
+                  chmod 600 /etc/ipsec.d/cacerts/ca.crt
+                  chown strongswan:root /etc/ipsec.secrets
+                  chown strongswan:root /etc/ipsec.d/private/server.key
+                  chown strongswan:root /etc/ipsec.d/certs/www-${SourceId}.{Domain}.crt
+                  chown strongswan:root /etc/ipsec.d/cacerts/ca.crt
+                - SourceId: !Ref SourceId
+                  Domain: 
+                    Fn::ImportValue:
+                      !Sub ${Environment}-Domain
+        install-aws-codedeploy:
+          packages:
+            apt:
+              ruby: []
+          commands:
+            0_install:
+              command: !Sub |
+                wget -nv "https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install" -O /tmp/install
+                chmod +x /tmp/install && /tmp/install auto
+            1_deploy_on_boot:
+              command: !Sub
+                - echo "@reboot root aws deploy create-deployment --region ${AWS::Region} --application-name ${ApplicationName} --update-outdated-instances-only --deployment-group-name ${DeploymentGroupName} 2>&1 | /usr/bin/logger -t codedeploy" >> /etc/cron.d/codedeploy_on_reboot
+                - ApplicationName:
+                    Fn::ImportValue:
+                      !Sub ${Environment}-BandwidthApplication
+                  DeploymentGroupName:
+                    Fn::ImportValue:
+                      !Sub ${Environment}-BandwidthDeploymentGroup
+
+  VpnInstanceStatusCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - VpnInstance
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | VPN Instance Status Check | ${VpnInstance}
+      MetricName: StatusCheckFailed
+      Namespace: AWS/EC2
+      Statistic: Minimum
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '1'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: InstanceId
+        Value: !Ref VpnInstance
+  
+  VpnInstanceCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - VpnInstance
+      - VpnInstanceStatusCheckAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | VPN CPU | ${VpnInstance}
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '85'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: InstanceId
+        Value: !Ref VpnInstance
+
+  VpnInstanceFailedVpnStatusAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - VpnInstance
+      - VpnInstanceCpuAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | VPN Down | ${VpnInstance}
+      MetricName: VPN Down
+      Namespace: CVPN/VPN
+      Statistic: Minimum
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '1'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+      - Name: InstanceId
+        Value: !Ref VpnInstance
+      - Name: InstanceType
+        Value: !Ref InstanceType
+      - Name: Environment
+        Value: !Ref Environment
+  
+  VpnInstanceHighIPv4ConnectionsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - VpnInstance
+      - VpnInstanceFailedVpnStatusAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | VPN High IPv4 Clients | ${VpnInstance}
+      MetricName: IPv4 Online
+      Namespace: CVPN/VPN
+      Statistic: Minimum
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '200'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: InstanceId
+        Value: !Ref VpnInstance
+      - Name: InstanceType
+        Value: !Ref InstanceType
+      - Name: Environment
+        Value: !Ref Environment
+  
+  VpnInstanceHighPingAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - VpnInstance
+      - VpnInstanceHighIPv4ConnectionsAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | VPN High Ping | ${VpnInstance}
+      MetricName: Ping
+      Namespace: CVPN/VPN
+      Statistic: Maximum
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '100'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+      - Name: InstanceId
+        Value: !Ref VpnInstance
+      - Name: InstanceType
+        Value: !Ref InstanceType
+      - Name: Environment
+        Value: !Ref Environment
+  
+  VpnInstancePingTimeoutAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - VpnInstance
+      - VpnInstanceHighPingAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | VPN Ping Timeout | ${VpnInstance}
+      MetricName: "Ping Timeout >3s"
+      Namespace: CVPN/VPN
+      Statistic: Minimum
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '3'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+      - Name: InstanceId
+        Value: !Ref VpnInstance
+      - Name: InstanceType
+        Value: !Ref InstanceType
+      - Name: Environment
+        Value: !Ref Environment
+  
+  VpnInstanceLowMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - VpnInstance
+      - VpnInstancePingTimeoutAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | VPN Low Memory | ${VpnInstance}
+      MetricName: "mem_used_percent"
+      Namespace: CWAgent
+      Statistic: Maximum
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '80'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: InstanceId
+        Value: !Ref VpnInstance
+  
+  VpnInstanceSwapUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - VpnInstance
+      - VpnInstanceLowMemoryAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | VPN Swap Usage | ${VpnInstance}
+      MetricName: "swap_used_percent"
+      Namespace: CWAgent
+      Statistic: Maximum
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '8'
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: InstanceId
+        Value: !Ref VpnInstance
+  
+  VpnInstanceDiskUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - VpnInstance
+      - VpnInstanceSwapUsageAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | VPN Disk Usage | ${VpnInstance}
+      MetricName: "disk_used_percent"
+      Namespace: CWAgent
+      Statistic: Maximum
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '75'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: InstanceId
+        Value: !Ref VpnInstance
+      - Name: device
+        Value: nvme0n1p1
+      - Name: fstype
+        Value: ext4
+      - Name: path
+        Value: /
+
+  UpgradeCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - VpnInstance
+      - VpnInstanceDiskUsageAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | VPN Upgrade Check | ${VpnInstance}
+      MetricName: "Last Upgrade Check Seconds"
+      Namespace: CVPN/Shared
+      Statistic: Maximum
+      Period: '43200'
+      EvaluationPeriods: '1'
+      Threshold: '172800'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: Environment
+        Value: !Ref Environment
+      - Name: InstanceId
+        Value: !Ref VpnInstance
+
+  RestartCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - VpnInstance
+      - UpgradeCheckAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | VPN Restart Check | ${VpnInstance}
+      MetricName: "# Packages Require Restart"
+      Namespace: CVPN/Shared
+      Statistic: Minimum
+      Period: '43200'
+      EvaluationPeriods: '1'
+      Threshold: '1'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: Environment
+        Value: !Ref Environment
+      - Name: InstanceId
+        Value: !Ref VpnInstance
+
+  VpnElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref VpnInstance
+    DependsOn:
+      - VpnInstance
+  
+  VpnRegionRecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties: 
+      ResourceRecords:
+        - !Ref VpnElasticIP
+      Comment: !Join [ '-', [ !Ref Environment, !Ref VpnInstance ] ]
+      HostedZoneName:
+        !Join
+          - ''
+          - - Fn::ImportValue: !Sub ${Environment}-Domain
+            - .
+      Name:
+        !Join
+          - ''
+          - - Fn::ImportValue: !Sub ${Environment}-VpnRegion
+            - !Sub -${SourceId}-${Date}.
+            - Fn::ImportValue: !Sub ${Environment}-Domain
+      Type: A
+      TTL: 600
+      Weight: 10
+      SetIdentifier: !Ref "AWS::StackName"
+
+Outputs:
+  VpnElasticIP:
+    Value: !Ref VpnElasticIP

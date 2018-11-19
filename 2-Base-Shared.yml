@@ -1,0 +1,2943 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Base Shared for Main, Renewer, Admin, Helper, Support, Webhook Servers. Includes Networking, EFS, Database, Security Groups, etc.
+
+Parameters:
+
+  Environment:
+    Type: String
+    Description: Name of the environment.
+    
+  DatabaseInstanceClass:
+    Type: String
+    Default: db.t2.micro
+  
+  DatabasePerformanceInsights:
+    Type: String
+    Default: false
+  
+  IosSubscriptionSecret:
+    Type: String
+    NoEcho: true
+  
+  StripeSecret:
+    Type: String
+    NoEcho: true
+    
+  StripeSecretTest:
+    Type: String
+    NoEcho: true
+  
+  StripePublicKey:
+    Type: String
+    
+  StripePublicKeyTest:
+    Type: String
+  
+  TrialDays:
+    Type: String
+    Default: 7
+  
+  GoogleRefreshToken:
+    Type: String
+    NoEcho: true
+  
+  GoogleClientId:
+    Type: String
+    NoEcho: true
+  
+  GoogleClientSecret:
+    Type: String
+    NoEcho: true
+  
+  GoogleLicenseKey:
+    Type: String
+    NoEcho: true
+
+  GooglePackageName:
+    Type: String
+    Default: com.confirmed.tunnels
+
+  ThrottleLimitGigabytes:
+    Type: Number
+    Default: 500
+
+  ExpiredThrottleKbps:
+    Type: Number
+    Default: 100
+
+  OverageThrottleKbps:
+    Type: Number
+    Default: 10000
+
+  StartDaysAgo:
+    Type: Number
+    Default: 6
+    
+  EndDaysLater:
+    Type: Number
+    Default: 3
+    
+  StripeWebhookSecret:
+    Type: String
+    NoEcho: true
+
+  # For VPC Peering
+  VpcUsEast1:
+    Type: String
+  VpcUsEast2:
+    Type: String
+  VpcUsWest1:
+    Type: String
+  VpcUsWest2:
+    Type: String
+  VpcApSouth1:
+    Type: String
+  VpcApNortheast2:
+    Type: String
+  VpcApSoutheast1:
+    Type: String
+  VpcApSoutheast2:
+    Type: String
+  VpcApNortheast1:
+    Type: String
+  VpcCaCentral1:
+    Type: String
+  VpcEuCentral1:
+    Type: String
+  VpcEuWest1:
+    Type: String
+  VpcEuWest2:
+    Type: String
+  VpcEuWest3:
+    Type: String
+  VpcSaEast1:
+    Type: String
+
+Conditions:
+  
+  HasUsEast1: !Not [!Equals [!Ref VpcUsEast1, ""]]
+  HasUsEast2: !Not [!Equals [!Ref VpcUsEast2, ""]]
+  HasUsWest1: !Not [!Equals [!Ref VpcUsWest1, ""]]
+  HasUsWest2: !Not [!Equals [!Ref VpcUsWest2, ""]]
+  HasApSouth1: !Not [!Equals [!Ref VpcApSouth1, ""]]
+  HasApNortheast2: !Not [!Equals [!Ref VpcApNortheast2, ""]]
+  HasApSoutheast1: !Not [!Equals [!Ref VpcApSoutheast1, ""]]
+  HasApSoutheast2: !Not [!Equals [!Ref VpcApSoutheast2, ""]]
+  HasApNortheast1: !Not [!Equals [!Ref VpcApNortheast1, ""]]
+  HasCaCentral1: !Not [!Equals [!Ref VpcCaCentral1, ""]]
+  HasEuCentral1: !Not [!Equals [!Ref VpcEuCentral1, ""]]
+  HasEuWest1: !Not [!Equals [!Ref VpcEuWest1, ""]]
+  HasEuWest2: !Not [!Equals [!Ref VpcEuWest2, ""]]
+  HasEuWest3: !Not [!Equals [!Ref VpcEuWest3, ""]]
+  HasSaEast1: !Not [!Equals [!Ref VpcSaEast1, ""]]
+
+Mappings: 
+  
+  RegionMapping: 
+    us-east-1:
+      Subdomain: us-east
+      Cidr: 172.16.0.0/17
+    us-east-2:
+      Subdomain: us-east
+      Cidr: 172.16.128.0/17
+    us-west-1:
+      Subdomain: us-west
+      Cidr: 172.17.0.0/17
+    us-west-2:
+      Subdomain: us-west
+      Cidr: 172.17.128.0/17
+    ap-northeast-1:
+      Subdomain: ap-tokyo
+      Cidr: 172.18.0.0/17
+    ap-northeast-2:
+      Subdomain: ap-seoul
+      Cidr: 172.18.128.0/17
+    ap-south-1:
+      Subdomain: ap-mumbai
+      Cidr: 172.19.0.0/17
+    ap-southeast-1:
+      Subdomain: ap-singapore
+      Cidr: 172.19.128.0/17
+    ap-southeast-2:
+      Subdomain: ap-sydney
+      Cidr: 172.20.0.0/17
+    ca-central-1:
+      Subdomain: canada
+      Cidr: 172.20.128.0/17
+    eu-central-1:
+      Subdomain: eu-frankfurt
+      Cidr: 172.21.0.0/17
+    eu-west-1:
+      Subdomain: eu-ireland
+      Cidr: 172.21.128.0/17
+    eu-west-2:
+      Subdomain: eu-london
+      Cidr: 172.22.0.0/17
+    eu-west-3:
+      Subdomain: s1
+      Cidr: 172.22.128.0/17
+    sa-east-1:
+      Subdomain: sa
+      Cidr: 172.23.0.0/17
+      
+Resources:
+  
+  DomainCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Sub
+                    - "*.${Domain}"
+                    - Domain: 
+                        Fn::ImportValue: !Sub ${Environment}-Domain
+      DomainValidationOptions:
+        - DomainName: !Sub
+                    - "*.${Domain}"
+                    - Domain: 
+                        Fn::ImportValue: !Sub ${Environment}-Domain
+          ValidationDomain:
+            Fn::ImportValue: !Sub ${Environment}-Domain
+      SubjectAlternativeNames:
+        - Fn::ImportValue: !Sub ${Environment}-Domain
+      Tags:
+        - Key: Name
+          Value: DomainCertificate
+        - Key: Environment
+          Value: !Ref Environment
+  
+  # Write Admin Postgres queries to this Log Group/Stream
+  
+  AdminAuditLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join [ '-', [ !Ref Environment, "AdminAudit" ] ]
+  
+  AdminAuditPostgresQueriesLogStream:
+    Type: AWS::Logs::LogStream
+    DependsOn:
+      - AdminAuditLogGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, "AdminAudit" ] ]
+      LogStreamName: "PostgresQueries"
+
+  AdminAuditActionsLogStream:
+    Type: AWS::Logs::LogStream
+    DependsOn:
+      - AdminAuditLogGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, "AdminAudit" ] ]
+      LogStreamName: "Actions"
+      
+  # ==================================================
+  # ================ GIT REPOSITORIES ================
+  # ==================================================
+  
+  HelperCodeCommit:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Sub ${Environment}-Helper
+  
+  AdminCodeCommit:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Sub ${Environment}-Admin
+  
+  SharedCodeCommit:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Sub ${Environment}-Shared
+  
+  RenewerCodeCommit:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Sub ${Environment}-Renewer
+  
+  SupportCodeCommit:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Sub ${Environment}-Support
+  
+  WebhookCodeCommit:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Sub ${Environment}-Webhook
+  
+  MainCodeCommit:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Sub ${Environment}-Main
+  
+  # ==================================================
+  # ================ S3 BUCKETS ======================
+  # ==================================================
+  
+  ClientBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: Clients
+        - Key: Environment
+          Value: !Ref Environment
+  
+  SuricataBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: PublicRead
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: Suricata
+        - Key: Environment
+          Value: !Ref Environment
+  
+  SpeedTestBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: PublicRead
+      AccelerateConfiguration:
+        AccelerationStatus: Enabled
+      Tags:
+        - Key: Name
+          Value: SpeedTest
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ==================================================
+  # ================ PARAMETER STORE =================
+  # ==================================================
+  
+  # ================ COMMON =================
+  
+  ClientBucketParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - ClientBucket
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "CLIENT_BUCKET" ] ]
+      Type: String
+      Value: !Ref ClientBucket
+  
+  TestClientBucketParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - ClientBucketParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "CLIENT_BUCKET" ] ]
+      Type: String
+      Value: "test-confirmedvpn-clients"
+  
+  SuricataBucketParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - ClientBucketParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "SURICATA_BUCKET" ] ]
+      Type: String
+      Value: !Ref SuricataBucket
+  
+  TestSuricataBucketParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - SuricataBucketParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "SURICATA_BUCKET" ] ]
+      Type: String
+      Value: "test-confirmedvpn-suricata"
+  
+  DatabaseHostParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - TestSuricataBucketParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "PG_HOST" ] ]
+      Type: String
+      Value: !GetAtt Database.Endpoint.Address
+  
+  TestDatabaseHostParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - DatabaseHostParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "PG_HOST" ] ]
+      Type: String
+      Value: !GetAtt TestDatabase.Endpoint.Address
+
+  AesEmailKeyParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestDatabaseHostParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "AES_EMAIL_KEY" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 32
+      Value: ""
+
+  TestAesEmailKeyParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - AesEmailKeyParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "AES_EMAIL_KEY" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      Value: "00000000000000000000000000000000"
+  
+  AesReceiptDataKeyParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestAesEmailKeyParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "AES_RECEIPT_DATA_KEY" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 32
+      Value: ""
+
+  TestReceiptDataKeyParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - AesReceiptDataKeyParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "AES_RECEIPT_DATA_KEY" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      Value: "11111111111111111111111111111111"
+
+  AesP12KeyParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestReceiptDataKeyParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "AES_P12_KEY" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 32
+      Value: ""
+
+  TestAesP12KeyParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - AesP12KeyParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "AES_P12_KEY" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      Value: "22222222222222222222222222222222"
+
+  IosSubscriptionSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestAesP12KeyParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "IOS_SUBSCRIPTION_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref IosSubscriptionSecret
+  
+  TestIosSubscriptionSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - IosSubscriptionSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "IOS_SUBSCRIPTION_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref IosSubscriptionSecret
+  
+  StripeSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestIosSubscriptionSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "STRIPE_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref StripeSecret
+  
+  TestStripeSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - StripeSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "STRIPE_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref StripeSecretTest
+  
+  StripePublicKeyParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestStripeSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "STRIPE_PUBLIC_KEY" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref StripePublicKey
+  
+  TestStripePublicKeyParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - StripePublicKeyParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "STRIPE_PUBLIC_KEY" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref StripePublicKeyTest
+  
+  GoogleRefreshTokenParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestStripePublicKeyParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "GOOGLE_REFRESH_TOKEN" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref GoogleRefreshToken
+
+  TestGoogleRefreshTokenParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - GoogleRefreshTokenParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "GOOGLE_REFRESH_TOKEN" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref GoogleRefreshToken
+  
+  GoogleClientIdParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestGoogleRefreshTokenParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "GOOGLE_CLIENT_ID" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref GoogleClientId
+      
+  TestGoogleClientIdParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - GoogleClientIdParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "GOOGLE_CLIENT_ID" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref GoogleClientId
+  
+  GoogleClientSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestGoogleClientIdParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "GOOGLE_CLIENT_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref GoogleClientSecret
+  
+  TestGoogleClientSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - GoogleClientSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "GOOGLE_CLIENT_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref GoogleClientSecret
+  
+  GoogleLicenseKeyParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestGoogleClientSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "GOOGLE_LICENSE_KEY" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref GoogleLicenseKey
+  
+  TestGoogleLicenseKeyParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - GoogleLicenseKeyParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "GOOGLE_LICENSE_KEY" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref GoogleLicenseKey
+
+  GooglePackageNameParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - TestGoogleLicenseKeyParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "GOOGLE_PACKAGE_NAME" ] ]
+      Type: String
+      Value: !Ref GooglePackageName
+  
+  TestGooglePackageNameParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - GooglePackageNameParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "GOOGLE_PACKAGE_NAME" ] ]
+      Type: String
+      Value: !Ref GooglePackageName
+  
+  TrialDaysParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - TestGooglePackageNameParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "TRIAL_DAYS" ] ]
+      Type: String
+      Value: !Ref TrialDays
+
+  TestTrialDaysParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - TrialDaysParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "TRIAL_DAYS" ] ]
+      Type: String
+      Value: !Ref TrialDays
+  
+  EmailSaltParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestTrialDaysParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "EMAIL_SALT" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+  
+  # Must be "test7" for tests to pass
+  TestEmailSaltParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - EmailSaltParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "EMAIL_SALT" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      Value: "test7"
+      
+  RedisHostParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - TestEmailSaltParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "REDIS_HOST" ] ]
+      Type: String
+      Value: !GetAtt Redis.PrimaryEndPoint.Address
+      
+  TestRedisHostParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - RedisHostParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "REDIS_HOST" ] ]
+      Type: String
+      Value: memorystore
+  
+  RedisPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "REDIS_PASSWORD" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+      
+  TestRedisPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "REDIS_PASSWORD" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      Value: "test"
+      
+  SpeedTestBucketParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - TestRedisHostParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "SPEED_TEST_BUCKET" ] ]
+      Type: String
+      Value: !Ref SpeedTestBucket
+  
+  TestSpeedTestBucketParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - SpeedTestBucketParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "SPEED_TEST_BUCKET" ] ]
+      Type: String
+      Value: "test-confirmedvpn-speedtest"
+      
+  ThrottleLimitGbParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - TestSpeedTestBucketParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "THROTTLE_LIMIT_GIGABYTES" ] ]
+      Type: String
+      Value: !Ref ThrottleLimitGigabytes
+  
+  TestThrottleLimitGbParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - ThrottleLimitGbParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "THROTTLE_LIMIT_GIGABYTES" ] ]
+      Type: String
+      Value: 1000
+  
+  ExpiredThrottleKbpsParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - TestThrottleLimitGbParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "EXPIRED_THROTTLE_KBPS" ] ]
+      Type: String
+      Value: !Ref ExpiredThrottleKbps
+  
+  TestExpiredThrottleKbpsParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - ExpiredThrottleKbpsParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "EXPIRED_THROTTLE_KBPS" ] ]
+      Type: String
+      Value: 1000
+  
+  OverageThrottleKbpsParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - TestExpiredThrottleKbpsParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "OVERAGE_THROTTLE_KBPS" ] ]
+      Type: String
+      Value: !Ref OverageThrottleKbps
+  
+  TestOverageThrottleKbpsParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - OverageThrottleKbpsParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "OVERAGE_THROTTLE_KBPS" ] ]
+      Type: String
+      Value: 1000
+
+  # ================ ADMIN DATABASE =================  
+  
+  DatabaseAdminPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "ADMIN", "PG_ADMIN_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+  
+  TestDatabaseAdminPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "ADMIN", "PG_ADMIN_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: false
+      Value: "admin_pw"
+
+  CAPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestOverageThrottleKbpsParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "ADMIN", "CA_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+  
+  TestCAPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - CAPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "ADMIN", "CA_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+
+  CertAccessSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestCAPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "ADMIN", "CERT_ACCESS_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+      
+  TestCertAccessSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - CertAccessSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "ADMIN", "CERT_ACCESS_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+  
+  AdminSessionSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestCertAccessSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "ADMIN", "ADMIN_SESSION_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+
+  TestAdminSessionSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - AdminSessionSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "ADMIN", "ADMIN_SESSION_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+
+  # ================ MAIN DATABASE =================
+  
+  DatabaseMainPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestAdminSessionSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "MAIN", "PG_MAIN_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+
+  TestDatabaseMainPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - DatabaseMainPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "MAIN", "PG_MAIN_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: false
+      Value: "main_pw"
+  
+  UserSessionSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestDatabaseMainPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "MAIN", "USER_SESSION_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+
+  TestUserSessionSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - UserSessionSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "MAIN", "USER_SESSION_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+
+  # ================ RENEWER DATABASE =================
+
+  DatabaseRenewerPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestUserSessionSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "RENEWER", "PG_RENEWER_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+
+  TestDatabaseRenewerPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - DatabaseRenewerPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "RENEWER", "PG_RENEWER_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: false
+      Value: "renewer_pw"
+  
+  StartDaysAgoParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - TestDatabaseRenewerPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "RENEWER", "START_DAYS_AGO" ] ]
+      Type: String
+      Value: !Ref StartDaysAgo
+  
+  TestStartDaysAgoParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - StartDaysAgoParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "RENEWER", "START_DAYS_AGO" ] ]
+      Type: String
+      Value: 6
+  
+  EndDaysLaterParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - TestStartDaysAgoParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "RENEWER", "END_DAYS_LATER" ] ]
+      Type: String
+      Value: !Ref EndDaysLater
+  
+  TestEndDaysLaterParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - EndDaysLaterParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "RENEWER", "END_DAYS_LATER" ] ]
+      Type: String
+      Value: 3
+      
+  # ================ SUPPORT DATABASE =================
+  
+  DatabaseSupportPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestEndDaysLaterParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "SUPPORT", "PG_SUPPORT_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+
+  TestDatabaseSupportPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - DatabaseSupportPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "SUPPORT", "PG_SUPPORT_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: false
+      Value: "support_pw"  
+      
+  SupportSessionSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestDatabaseSupportPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "SUPPORT", "SUPPORT_SESSION_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+
+  TestSupportSessionSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - SupportSessionSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "SUPPORT", "SUPPORT_SESSION_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+      
+  # ================ HELPER DATABASE =================
+  
+  DatabaseHelperPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestSupportSessionSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "HELPER", "PG_HELPER_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+
+  TestDatabaseHelperPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - DatabaseHelperPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "HELPER", "PG_HELPER_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: false
+      Value: "helper_pw"
+      
+  # ================ WEBHOOK DATABASE =================
+  
+  DatabaseWebhookPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestDatabaseHelperPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "WEBHOOK", "PG_WEBHOOK_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+
+  TestDatabaseWebhookPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - DatabaseWebhookPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "WEBHOOK", "PG_WEBHOOK_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: false
+      Value: "webhook_pw"
+  
+  StripeWebhookSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestDatabaseWebhookPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "WEBHOOK", "STRIPE_WEBHOOK_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: !Ref StripeWebhookSecret
+  
+  TestStripeWebhookSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - StripeWebhookSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "WEBHOOK", "STRIPE_WEBHOOK_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      RandomStringLength: 0
+      Value: test
+      
+  # ================ DEBUG DATABASE =================
+  
+  DatabaseDebugPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestStripeWebhookSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "DEBUG", "PG_DEBUG_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+  
+  TestDatabaseDebugPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - DatabaseDebugPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "DEBUG", "PG_DEBUG_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: false
+      Value: "debug_pw"
+
+  # TestCurrentSourceIdParameter:
+  #   Type: AWS::SSM::Parameter
+  #   Properties:
+  #     Name: !Join [ '/', [ "", !Ref Environment, "TEST", "CURRENT_SOURCE_ID" ] ]
+  #     Type: String
+  #     Value: v2
+
+  # ==================================================
+  # ===================    VPC    ====================
+  # ==================================================
+  
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 192.168.0.0/16
+      InstanceTenancy: default
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value: !Ref Environment    
+            
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Ref Environment
+        
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  
+  Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select: 
+          - 0
+          - Fn::GetAZs: ""
+      CidrBlock: 192.168.0.0/20
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Ref Environment
+
+  Subnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select: 
+          - 1
+          - Fn::GetAZs: ""
+      CidrBlock: 192.168.32.0/20
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Ref Environment
+
+  SubnetInternal:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select: 
+          - 0
+          - Fn::GetAZs: ""
+      CidrBlock: 192.168.48.0/20
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Ref Environment
+
+  SubnetInternal2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select: 
+          - 1
+          - Fn::GetAZs: ""
+      CidrBlock: 192.168.64.0/20
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Ref Environment
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Ref Environment
+
+  Route:
+    Type: AWS::EC2::Route
+    DependsOn:
+      - InternetGateway
+      - RouteTable
+      - VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn:
+      - RouteTable
+      - Subnet
+      - Route
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref Subnet
+  
+  Subnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn:
+      - RouteTable
+      - Subnet2
+      - Route
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref Subnet2
+
+  SubnetInternalRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn:
+      - RouteTable
+      - SubnetInternal
+      - Route
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref SubnetInternal
+  
+  SubnetInternal2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn:
+      - RouteTable
+      - SubnetInternal2
+      - Route
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref SubnetInternal2
+
+  # ==================================================
+  # ==================== VPC TEST ====================
+  # ==================================================
+
+  TestVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 192.168.0.0/16
+      InstanceTenancy: default
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, Test ] ]     
+            
+  TestInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, Test ] ]
+        
+  TestVPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref TestVPC
+      InternetGatewayId: !Ref TestInternetGateway
+
+  TestSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select: 
+          - 0
+          - Fn::GetAZs: ""
+      CidrBlock: 192.168.0.0/20
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref TestVPC
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, Test ] ]
+
+  TestSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select: 
+          - 1
+          - Fn::GetAZs: ""
+      CidrBlock: 192.168.32.0/20
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref TestVPC
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, Test ] ]
+
+  TestRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref TestVPC
+      Tags:
+        - Key: Name
+          Value: !Ref Environment
+
+  TestRoute:
+    Type: AWS::EC2::Route
+    DependsOn:
+      - TestInternetGateway
+      - TestRouteTable
+      - TestVPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref TestRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref TestInternetGateway
+  
+  TestSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn:
+      - TestRouteTable
+      - TestSubnet
+      - TestRoute
+    Properties:
+      RouteTableId: !Ref TestRouteTable
+      SubnetId: !Ref TestSubnet
+  
+  TestSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn:
+      - TestRouteTable
+      - TestSubnet2
+      - TestRoute
+    Properties:
+      RouteTableId: !Ref TestRouteTable
+      SubnetId: !Ref TestSubnet2
+  
+  TestPrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select: 
+          - 0
+          - Fn::GetAZs: ""
+      CidrBlock: 192.168.64.0/20
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref TestVPC
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, Test, Private ] ]
+
+  TestPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select: 
+          - 1
+          - Fn::GetAZs: ""
+      CidrBlock: 192.168.96.0/20
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref TestVPC
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, Test, Private ] ]
+
+  TestNatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: TestVPCGatewayAttachment
+    Properties: 
+      Domain: vpc
+  
+  TestNatGatewayEIP2:
+    Type: AWS::EC2::EIP
+    DependsOn: TestVPCGatewayAttachment
+    Properties: 
+      Domain: vpc
+  
+  TestNatGateway: 
+    Type: AWS::EC2::NatGateway
+    DependsOn: TestInternetGateway
+    Properties: 
+      AllocationId: !GetAtt TestNatGatewayEIP.AllocationId
+      SubnetId: !Ref TestSubnet
+
+  TestNatGateway2: 
+    Type: AWS::EC2::NatGateway
+    DependsOn: TestInternetGateway
+    Properties: 
+      AllocationId: !GetAtt TestNatGatewayEIP2.AllocationId
+      SubnetId: !Ref TestSubnet2
+  
+  TestPrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref TestVPC
+      Tags:
+        - Key: Name
+          Value: !Join [ '-', [ !Ref Environment, Private ] ]
+  
+  TestPrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref TestPrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref TestNatGateway
+  
+  TestPrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref TestPrivateRouteTable
+      SubnetId: !Ref TestPrivateSubnet
+  
+  TestPrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref TestVPC
+      Tags:
+        - Key: Name
+          Value: !Join [ '-', [ !Ref Environment, Private ] ]
+  
+  TestPrivateRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref TestPrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref TestNatGateway2
+  
+  TestPrivateSubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref TestPrivateRouteTable2
+      SubnetId: !Ref TestPrivateSubnet2
+      
+  # ==================================================
+  # =================== SECURITY GROUPS ==============
+  # ==================================================
+          
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Main, Renewer, Admin In
+      Tags:
+        - Key: Name
+          Value: Database
+        - Key: Environment
+          Value: !Ref Environment
+          
+  SourcesEFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Admin In
+      Tags:
+        - Key: Name
+          Value: SourcesEFS
+        - Key: Environment
+          Value: !Ref Environment
+  
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Admin, Main, Support In
+      Tags:
+        - Key: Name
+          Value: Redis
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ==================================================
+  # ============== SECURITY GROUPS - TEST ============
+  # ==================================================
+          
+  TestCodeBuildSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref TestVPC
+      GroupDescription: No Inbound Traffic Allowed, Allow Outbound
+      Tags:
+        - Key: Name
+          Value: CodeBuild
+        - Key: Environment
+          Value: !Join [ '-', [ !Ref Environment, Test ] ]
+  
+  TestDatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref TestVPC
+      GroupDescription: CodeBuild In
+      Tags:
+        - Key: Name
+          Value: TestDatabase
+        - Key: Environment
+          Value: !Join [ '-', [ !Ref Environment, Test ] ]
+          
+  TestCodeBuildDatabaseSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      Description: Allow Postgres from CodeBuild to TestDatabase
+      SourceSecurityGroupId: !Ref TestCodeBuildSecurityGroup
+      GroupId: !Ref TestDatabaseSecurityGroup
+  
+  # ==================================================
+  # =================== DATABASE =====================
+  # ================================================== 
+  
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: SubnetGroup
+      SubnetIds:
+        - !Ref Subnet
+        - !Ref Subnet2
+        
+  DatabaseMonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: "AllowRds"
+            Effect: Allow
+            Principal:
+              Service:
+                - monitoring.rds.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole
+      
+  Database:
+    Type: AWS::RDS::DBInstance
+    DependsOn:
+      - DatabaseSubnetGroup
+      - DatabaseSecurityGroup
+    Properties:
+      AllocatedStorage: 20
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: true
+      BackupRetentionPeriod: 30
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      DBName: master
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      EnablePerformanceInsights: !Ref DatabasePerformanceInsights
+      Engine: postgres
+      EngineVersion: 10.4
+      LicenseModel: postgresql-license
+      MasterUsername: master
+      MasterUserPassword: !GetAtt DatabaseAdminPasswordParameter.Value
+      MonitoringInterval: 60
+      MonitoringRoleArn: !GetAtt DatabaseMonitoringRole.Arn
+      MultiAZ: true
+      Port: 5432
+      PreferredBackupWindow: 11:09-11:39
+      PreferredMaintenanceWindow: wed:08:43-wed:09:13
+      PubliclyAccessible: true
+      StorageType: gp2
+      Tags:
+        - Key: workload-type
+          Value: production
+        - Key: Name
+          Value: !Join [ '-', [ !Ref Environment, Database ] ]
+        - Key: Environment
+          Value: !Ref Environment
+      VPCSecurityGroups:
+        - Ref: DatabaseSecurityGroup
+
+  # ==================================================
+  # ================= DATABASE ALARMS ================
+  # ==================================================
+
+  DatabaseCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - Database
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | DB CPU | ${Database}
+      MetricName: CPUUtilization
+      Namespace: AWS/RDS
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '60'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: DBInstanceIdentifier
+        Value: !Ref Database
+  
+  DatabaseFreeSpaceAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - Database
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | DB Space <4GB | ${Database}
+      ComparisonOperator: LessThanOrEqualToThreshold
+      Dimensions:
+      - Name: DBInstanceIdentifier
+        Value: !Ref Database
+      EvaluationPeriods: '1'
+      MetricName: FreeStorageSpace
+      TreatMissingData: breaching
+      Namespace: AWS/RDS
+      Period: '300'
+      Statistic: Maximum
+      Threshold: '4096000000'
+  
+  DatabaseFreeMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - Database
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | DB Memory <200MB | ${Database}
+      ComparisonOperator: LessThanOrEqualToThreshold
+      Dimensions:
+      - Name: DBInstanceIdentifier
+        Value: !Ref Database
+      EvaluationPeriods: '1'
+      MetricName: FreeableMemory
+      TreatMissingData: breaching
+      Namespace: AWS/RDS
+      Period: '300'
+      Statistic: Maximum
+      Threshold: '209715200'
+          
+  CpuCreditBalanceAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - Database
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | CPU Credit Balance <50 | ${Database}
+      ComparisonOperator: LessThanOrEqualToThreshold
+      Dimensions:
+      - Name: DBInstanceIdentifier
+        Value: !Ref Database
+      EvaluationPeriods: '1'
+      MetricName: CPUCreditBalance
+      TreatMissingData: breaching
+      Namespace: AWS/RDS
+      Period: '300'
+      Statistic: Maximum
+      Threshold: '50'
+  
+  DatabaseReadLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - Database
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | DB Read Latency >1s | ${Database}
+      MetricName: ReadLatency
+      Namespace: AWS/RDS
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '1'
+      Threshold: '60'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: DBInstanceIdentifier
+        Value: !Ref Database
+  
+  # ==================================================
+  # ============== DATABASE-TEST =====================
+  # ================================================== 
+  
+  TestDatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: TestSubnetGroup
+      SubnetIds:
+        - !Ref TestSubnet
+        - !Ref TestSubnet2
+      
+  TestDatabase:
+    Type: AWS::RDS::DBInstance
+    DependsOn:
+      - TestDatabaseSubnetGroup
+      - TestDatabaseSecurityGroup
+    Properties:
+      AllocatedStorage: 20
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: true
+      DBInstanceClass: db.t2.micro
+      Port: 5432
+      PubliclyAccessible: true
+      StorageType: gp2
+      BackupRetentionPeriod: 7
+      MasterUsername: master
+      MasterUserPassword: !GetAtt TestDatabaseAdminPasswordParameter.Value
+      PreferredBackupWindow: 11:09-11:39
+      PreferredMaintenanceWindow: wed:08:43-wed:09:13
+      DBName: master
+      Engine: postgres
+      EngineVersion: 10.4
+      LicenseModel: postgresql-license
+      MultiAZ: true
+      DBSubnetGroupName: !Ref TestDatabaseSubnetGroup
+      VPCSecurityGroups:
+        - Ref: TestDatabaseSecurityGroup
+      Tags:
+        - Key: workload-type
+          Value: production
+        - Key: Name
+          Value: !Join [ '-', [ !Ref Environment, Database, Test ] ]
+        - Key: Environment
+          Value: !Ref Environment
+               
+# ==================================================
+# =================== REDIS ========================
+# ==================================================   
+
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Group for Redis
+      SubnetIds:
+        - !Ref Subnet
+        - !Ref Subnet2
+  
+  Redis:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties: 
+      AtRestEncryptionEnabled: true
+      AuthToken: !GetAtt RedisPasswordParameter.Value
+      AutomaticFailoverEnabled: true
+      AutoMinorVersionUpgrade: true
+      CacheNodeType: cache.m4.large
+      CacheParameterGroupName: default.redis4.0
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      Engine: redis
+      EngineVersion: 4.0.10
+      NumCacheClusters: 2
+      Port: 6379
+      PreferredCacheClusterAZs:
+        - Fn::Select: 
+            - 0
+            - Fn::GetAZs: ""
+        - Fn::Select: 
+            - 1
+            - Fn::GetAZs: ""
+      ReplicationGroupDescription: RedisReplicationGroup
+      SecurityGroupIds:
+        - !Ref RedisSecurityGroup
+      SnapshotRetentionLimit: 3
+      TransitEncryptionEnabled: true
+
+  # ==================================================
+  # =================== REDIS ALARMS =================
+  # ==================================================
+  
+  RedisCpuAlarm1:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | Redis CPU 1
+      MetricName: EngineCPUUtilization
+      Namespace: AWS/ElastiCache
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '45'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: CacheClusterId
+        Value: !Join [ '-', [ !Ref Redis, "001" ] ]
+      - Name: CacheNodeId
+        Value: "0001"
+  
+  RedisCpuAlarm2:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - RedisCpuAlarm1
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | Redis CPU 1
+      MetricName: EngineCPUUtilization
+      Namespace: AWS/ElastiCache
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '45'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: CacheClusterId
+        Value: !Join [ '-', [ !Ref Redis, "002" ] ]
+      - Name: CacheNodeId
+        Value: "0001"
+        
+  RedisFreeMemoryAlarm1:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | Redis Free Memory 1
+      MetricName: FreeableMemory
+      Namespace: AWS/ElastiCache
+      Statistic: Minimum
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '4000000000'
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: CacheClusterId
+        Value: !Join [ '-', [ !Ref Redis, "001" ] ]
+      - Name: CacheNodeId
+        Value: "0001"
+        
+  RedisFreeMemoryAlarm2:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - RedisFreeMemoryAlarm1
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | Redis Free Memory 2
+      MetricName: FreeableMemory
+      Namespace: AWS/ElastiCache
+      Statistic: Minimum
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '4000000000'
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: CacheClusterId
+        Value: !Join [ '-', [ !Ref Redis, "002" ] ]
+      - Name: CacheNodeId
+        Value: "0001"
+        
+  RedisSwapUsageAlarm1:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | Redis Swap 1
+      MetricName: SwapUsage
+      Namespace: AWS/ElastiCache
+      Statistic: Maximum
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '25000000'
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: CacheClusterId
+        Value: !Join [ '-', [ !Ref Redis, "001" ] ]
+      - Name: CacheNodeId
+        Value: "0001"
+        
+  RedisSwapUsageAlarm2:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - RedisSwapUsageAlarm1
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | Redis Swap 2
+      MetricName: SwapUsage
+      Namespace: AWS/ElastiCache
+      Statistic: Maximum
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '25000000'
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: CacheClusterId
+        Value: !Join [ '-', [ !Ref Redis, "002" ] ]
+      - Name: CacheNodeId
+        Value: "0001"
+  
+        
+  # ==================================================
+  # =================== EFS SOURCES ==================
+  # ==================================================      
+  
+  SourcesEFS:
+    Type: AWS::EFS::FileSystem
+    DependsOn:
+      - SourcesEFSSecurityGroup
+      - Subnet
+    Properties:
+      Encrypted: true
+      PerformanceMode: generalPurpose
+      FileSystemTags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, Sources ] ]
+      - Key: Environment
+        Value: !Ref Environment
+  
+  SourcesEFSMountTarget:
+    Type: AWS::EFS::MountTarget
+    DependsOn:
+      - SourcesEFS
+    Properties:
+      FileSystemId:
+        Ref: SourcesEFS
+      SubnetId:
+        Ref: Subnet
+      SecurityGroups:
+      - Ref: SourcesEFSSecurityGroup
+      
+  SourcesEFSMountTarget2:
+    Type: AWS::EFS::MountTarget
+    DependsOn:
+      - SourcesEFS
+    Properties:
+      FileSystemId:
+        Ref: SourcesEFS
+      SubnetId:
+        Ref: Subnet2
+      SecurityGroups:
+      - Ref: SourcesEFSSecurityGroup
+
+  # ==================================================
+  # ============ HELPER SECURITY GROUPS ==============
+  # ==================================================
+  
+  HelperSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: No access
+      Tags:
+        - Key: Name
+          Value: Helper
+        - Key: Environment
+          Value: !Ref Environment
+  
+  HelperDatabaseSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      Description: Allow Postgres from Helper to Database
+      SourceSecurityGroupId: !Ref HelperSecurityGroup
+      GroupId: !Ref DatabaseSecurityGroup
+
+  RadiusHelperSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: udp
+      FromPort: 1813
+      ToPort: 1813
+      Description: Allow Radius In From Internal VPN Network
+      CidrIp: 172.16.0.0/12
+      GroupId: !Ref HelperSecurityGroup
+      
+  HelperHttpSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      Description: Allow HTTP In From Internal VPN Network
+      CidrIp: 172.16.0.0/12
+      GroupId: !Ref HelperSecurityGroup
+
+  # ==================================================
+  # ================== HELPER CODEPIPELINE ===========
+  # ==================================================
+  
+  HelperCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Join [ '-', [ !Ref Environment, Helper ] ]
+      ServiceRole: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, CodeBuildRoleArn ] ]
+      Artifacts:
+        Type: CODEPIPELINE
+      BadgeEnabled: false
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables:
+          - Name: ENVIRONMENT
+            Type: PLAINTEXT
+            Value: !Ref Environment
+          - Name: CURRENT_SOURCE_ID
+            Type: PLAINTEXT
+            Value: localsource
+          - Name: PG_ADMIN_PASSWORD
+            Type: PLAINTEXT
+            Value: admin_pw
+          - Name: AWS_REGION
+            Type: PLAINTEXT
+            Value: !Ref AWS::Region
+          - Name: GIT_BRANCH
+            Type: PLAINTEXT
+            Value:
+              Fn::ImportValue:
+                !Join [ '-', [ !Ref Environment, GitBranch ] ]
+        Type: LINUX_CONTAINER
+        Image: aws/codebuild/nodejs:6.3.1
+      Source:
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 15
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+  
+  HelperCodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn:
+      - HelperDeploymentGroup
+      - HelperCodeBuildProject
+    Properties:
+      ArtifactStore:
+        Location: 
+          Fn::ImportValue:
+             !Join [ '-', [ !Ref Environment, ArtifactBucket ] ]
+        Type: S3
+      Name: !Join [ '-', [ !Ref Environment, Helper ] ]
+      RoleArn: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, CodePipelineRoleArn ] ]
+      Stages:
+        - Name: CodeCommit
+          Actions:
+            - Name: HelperCodeCommit
+              RunOrder: 1
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: 1
+              Configuration:
+                RepositoryName: !Sub ${Environment}-Helper
+                BranchName:
+                  Fn::ImportValue:
+                     !Join [ '-', [ !Ref Environment, GitBranch ] ]
+              OutputArtifacts:
+                - Name: CodeCommitArtifact
+        - Name: CodeBuild
+          Actions:
+            - Name: HelperCodeBuild
+              RunOrder: 2
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: !Ref HelperCodeBuildProject
+              InputArtifacts:
+                - Name: CodeCommitArtifact
+              OutputArtifacts:
+                - Name: CodeBuildArtifact
+        - Name: CodeDeploy
+          Actions:
+            - Name: HelperCodeDeploy
+              RunOrder: 3
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CodeDeploy
+                Version: 1
+              Configuration:
+                ApplicationName: !Ref HelperApplication
+                DeploymentGroupName: !Ref HelperDeploymentGroup
+              InputArtifacts:
+                - Name: CodeBuildArtifact
+  
+  HelperApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Join [ '-', [ !Ref Environment, Helper ] ]
+
+  HelperDeploymentGroup: 
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties: 
+      ApplicationName: !Ref HelperApplication
+      DeploymentConfigName: CodeDeployDefault.OneAtATime
+      Ec2TagFilters: 
+        - Key: Name
+          Value: !Join [ '-', [ !Ref Environment, Helper ] ]
+          Type: KEY_AND_VALUE
+      ServiceRoleArn: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, CodeDeployRoleArn ] ]
+             
+  HelperRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+          - Fn::ImportValue:
+              !Join [ '-', [ !Ref Environment, SSMManagedPolicy ] ]
+      Policies:
+        - PolicyName: !Sub ${Environment}-Helper
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParametersByPath
+              Resource:
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/COMMON
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/HELPER
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource:
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-Helper
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-Helper:log-stream:*
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-Helper-Node
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-Helper-Node:log-stream:*
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - codedeploy:CreateDeployment
+              Resource: !Sub arn:aws:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${HelperApplication}/${HelperDeploymentGroup}
+            - Effect: Allow
+              Action:
+                - codedeploy:GetDeploymentConfig
+              Resource: !Sub arn:aws:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentconfig:CodeDeployDefault.OneAtATime
+            - Effect: Allow
+              Action:
+                - codedeploy:GetApplicationRevision
+                - codedeploy:RegisterApplicationRevision
+              Resource: !Sub arn:aws:codedeploy:${AWS::Region}:${AWS::AccountId}:application:${HelperApplication}
+
+  HelperInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref HelperRole
+
+  # ==================================================
+  # =============== HELPER ERROR ALERTS ==============
+  # ==================================================
+  
+  HelperLogsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, Helper ] ]
+      
+  HelperNodeLogsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node ] ]
+  
+  HelperNodeEmailerSubscriptionFilter:
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn:
+      - HelperNodeLogsLogGroup
+    Properties: 
+      DestinationArn:
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ErrorEmailerFunctionArn ] ]
+      FilterPattern: '{ $.level = "error" }'
+      LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node ] ]
+  
+  404MetricFilter: 
+    Type: AWS::Logs::MetricFilter
+    DependsOn:
+      - HelperNodeLogsLogGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node] ]
+      FilterPattern: "{ $.meta.res.statusCode = 404 }"
+      MetricTransformations: 
+        - 
+          MetricValue: "1"
+          MetricNamespace: !Join [ '-', [ !Ref Environment, Helper-Node, HttpErrors] ]
+          MetricName: "404Count"
+
+  401MetricFilter: 
+    Type: AWS::Logs::MetricFilter
+    DependsOn:
+      - HelperNodeLogsLogGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node] ]
+      FilterPattern: "{ $.meta.error.statusCode = 401 }"
+      MetricTransformations: 
+        - 
+          MetricValue: "1"
+          MetricNamespace: !Join [ '-', [ !Ref Environment, Helper-Node, HttpErrors] ]
+          MetricName: "401Count"
+
+  4xxMetricFilter: 
+    Type: AWS::Logs::MetricFilter
+    DependsOn:
+      - HelperNodeLogsLogGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node] ]
+      FilterPattern: "{ $.meta.error.statusCode >= 400 && $.meta.error.statusCode < 500 }"
+      MetricTransformations: 
+        - 
+          MetricValue: "1"
+          MetricNamespace: !Join [ '-', [ !Ref Environment, Helper-Node, HttpErrors] ]
+          MetricName: "4XXCount"
+  
+  5xxMetricFilter: 
+    Type: AWS::Logs::MetricFilter
+    DependsOn:
+      - HelperNodeLogsLogGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node] ]
+      FilterPattern: "{ $.meta.error.statusCode >= 500 }"
+      MetricTransformations: 
+        - 
+          MetricValue: "1"
+          MetricNamespace: !Join [ '-', [ !Ref Environment, Helper-Node, HttpErrors] ]
+          MetricName: "5XXCount"
+
+  HelperCodePipelineAlert:
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: Alert when CodePipeline Fails
+      EventPattern: 
+        source: 
+          - "aws.codepipeline"
+        detail-type: 
+          - "CodePipeline Pipeline Execution State Change"
+        detail: 
+          state: 
+            - "FAILED"
+          pipeline:
+            - !Ref HelperCodePipeline
+      State: ENABLED
+      Targets:
+        - Arn:
+            Fn::ImportValue:
+              !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+          Id: !Join [ '-', [ !Ref Environment, Helper-CodePipeline-Alert ] ]
+
+  # ==================================================
+  # =========== VPC Peering And Routes ===============
+  # ================================================== 
+  
+  PrivateHostedZone:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      Name: !Sub ${Environment}-private
+      VPCs:
+        - VPCId: !Ref VPC
+          VPCRegion: !Ref AWS::Region
+        - !If 
+          - HasUsEast1
+          - VPCId: !Ref VpcUsEast1
+            VPCRegion: us-east-1
+          - !Ref "AWS::NoValue"
+        - !If 
+          - HasUsEast2
+          - VPCId: !Ref VpcUsEast2
+            VPCRegion: us-east-2
+          - !Ref "AWS::NoValue"
+        - !If 
+          - HasUsWest1
+          - VPCId: !Ref VpcUsWest1
+            VPCRegion: us-west-1
+          - !Ref "AWS::NoValue"
+        - !If 
+          - HasUsWest2
+          - VPCId: !Ref VpcUsWest2
+            VPCRegion: us-west-2
+          - !Ref "AWS::NoValue"
+        - !If 
+          - HasApSouth1
+          - VPCId: !Ref VpcApSouth1
+            VPCRegion: ap-south-1
+          - !Ref "AWS::NoValue"
+        - !If 
+          - HasApNortheast2
+          - VPCId: !Ref VpcApNortheast2
+            VPCRegion: ap-northeast-2
+          - !Ref "AWS::NoValue"
+        - !If 
+          - HasApSoutheast1
+          - VPCId: !Ref VpcApSoutheast1
+            VPCRegion: ap-southeast-1
+          - !Ref "AWS::NoValue"
+        - !If 
+          - HasApSoutheast2
+          - VPCId: !Ref VpcApSoutheast2
+            VPCRegion: ap-southeast-2
+          - !Ref "AWS::NoValue"
+        - !If 
+          - HasApNortheast1
+          - VPCId: !Ref VpcApNortheast1
+            VPCRegion: ap-northeast-1
+          - !Ref "AWS::NoValue"
+        - !If 
+          - HasCaCentral1
+          - VPCId: !Ref VpcCaCentral1
+            VPCRegion: ca-central-1
+          - !Ref "AWS::NoValue"
+        - !If 
+          - HasEuCentral1
+          - VPCId: !Ref VpcEuCentral1
+            VPCRegion: eu-central-1
+          - !Ref "AWS::NoValue"
+        - !If 
+          - HasEuWest1
+          - VPCId: !Ref VpcEuWest1
+            VPCRegion: eu-west-1
+          - !Ref "AWS::NoValue"
+        - !If 
+          - HasEuWest2
+          - VPCId: !Ref VpcEuWest2
+            VPCRegion: eu-west-2
+          - !Ref "AWS::NoValue"
+        - !If 
+          - HasEuWest3
+          - VPCId: !Ref VpcEuWest3
+            VPCRegion: eu-west-3
+          - !Ref "AWS::NoValue"
+        - !If 
+          - HasSaEast1
+          - VPCId: !Ref VpcSaEast1
+            VPCRegion: sa-east-1
+          - !Ref "AWS::NoValue"
+
+  # Peering Connections and Routes generated by this script:
+  # 
+  #   set +H
+  #
+  #   LIST=(
+  #     us-east-1,UsEast1
+  #     us-east-2,UsEast2
+  #     us-west-1,UsWest1
+  #     us-west-2,UsWest2
+  #     ap-south-1,ApSouth1
+  #     ap-northeast-2,ApNortheast2
+  #     ap-southeast-1,ApSoutheast1
+  #     ap-southeast-2,ApSoutheast2
+  #     ap-northeast-1,ApNortheast1
+  #     ca-central-1,CaCentral1
+  #     eu-central-1,EuCentral1
+  #     eu-west-1,EuWest1
+  #     eu-west-2,EuWest2
+  #     eu-west-3,EuWest3
+  #     sa-east-1,SaEast1
+  #   )
+  #
+  #   for i in "${LIST[@]}"
+  #   do
+  #     IFS=',' read A B <<< "${i}"
+  #     echo "Peering${B}:
+  #     Type: AWS::EC2::VPCPeeringConnection
+  #     Condition: Has${B}
+  #     Properties:
+  #       PeerVpcId: !Ref Vpc${B}
+  #       Tags:
+  #       - Key: Name
+  #         Value: !Join [ '-', [ !Ref Environment, ${A} ] ]
+  #       VpcId:
+  #         Fn::ImportValue:
+  #           !Join [ '-', [ !Ref Environment, VPCId ] ]
+  #       PeerOwnerId: !Ref 'AWS::AccountId'
+  #       PeerRegion: ${A}
+  #
+  #   PeeringRouteTo${B}:
+  #     Type: AWS::EC2::Route
+  #     Condition: Has${B}
+  #     Properties:
+  #       DestinationCidrBlock: !FindInMap [ RegionMapping, ${A}, Cidr ]
+  #       RouteTableId:
+  #         Fn::ImportValue:
+  #           !Join [ '-', [ !Ref Environment, BaseRouteTableId ] ]
+  #       VpcPeeringConnectionId: !Ref Peering${B}
+  #   "
+  #   done
+  
+  PeeringUsEast1:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasUsEast1
+    Properties: 
+      PeerVpcId: !Ref VpcUsEast1
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, us-east-1 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: us-east-1
+
+  PeeringRouteToUsEast1:
+    Type: AWS::EC2::Route
+    Condition: HasUsEast1
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, us-east-1, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringUsEast1
+
+  PeeringUsEast2:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasUsEast2
+    Properties: 
+      PeerVpcId: !Ref VpcUsEast2
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, us-east-2 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: us-east-2
+
+  PeeringRouteToUsEast2:
+    Type: AWS::EC2::Route
+    Condition: HasUsEast2
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, us-east-2, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringUsEast2
+
+  PeeringUsWest1:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasUsWest1
+    Properties: 
+      PeerVpcId: !Ref VpcUsWest1
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, us-west-1 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: us-west-1
+
+  PeeringRouteToUsWest1:
+    Type: AWS::EC2::Route
+    Condition: HasUsWest1
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, us-west-1, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringUsWest1
+
+  PeeringUsWest2:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasUsWest2
+    Properties: 
+      PeerVpcId: !Ref VpcUsWest2
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, us-west-2 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: us-west-2
+
+  PeeringRouteToUsWest2:
+    Type: AWS::EC2::Route
+    Condition: HasUsWest2
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, us-west-2, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringUsWest2
+
+  PeeringApSouth1:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasApSouth1
+    Properties: 
+      PeerVpcId: !Ref VpcApSouth1
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, ap-south-1 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: ap-south-1
+
+  PeeringRouteToApSouth1:
+    Type: AWS::EC2::Route
+    Condition: HasApSouth1
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, ap-south-1, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringApSouth1
+
+  PeeringApNortheast2:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasApNortheast2
+    Properties: 
+      PeerVpcId: !Ref VpcApNortheast2
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, ap-northeast-2 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: ap-northeast-2
+
+  PeeringRouteToApNortheast2:
+    Type: AWS::EC2::Route
+    Condition: HasApNortheast2
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, ap-northeast-2, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringApNortheast2
+
+  PeeringApSoutheast1:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasApSoutheast1
+    Properties: 
+      PeerVpcId: !Ref VpcApSoutheast1
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, ap-southeast-1 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: ap-southeast-1
+
+  PeeringRouteToApSoutheast1:
+    Type: AWS::EC2::Route
+    Condition: HasApSoutheast1
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, ap-southeast-1, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringApSoutheast1
+
+  PeeringApSoutheast2:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasApSoutheast2
+    Properties: 
+      PeerVpcId: !Ref VpcApSoutheast2
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, ap-southeast-2 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: ap-southeast-2
+
+  PeeringRouteToApSoutheast2:
+    Type: AWS::EC2::Route
+    Condition: HasApSoutheast2
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, ap-southeast-2, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringApSoutheast2
+
+  PeeringApNortheast1:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasApNortheast1
+    Properties: 
+      PeerVpcId: !Ref VpcApNortheast1
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, ap-northeast-1 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: ap-northeast-1
+
+  PeeringRouteToApNortheast1:
+    Type: AWS::EC2::Route
+    Condition: HasApNortheast1
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, ap-northeast-1, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringApNortheast1
+
+  PeeringCaCentral1:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasCaCentral1
+    Properties: 
+      PeerVpcId: !Ref VpcCaCentral1
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, ca-central-1 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: ca-central-1
+
+  PeeringRouteToCaCentral1:
+    Type: AWS::EC2::Route
+    Condition: HasCaCentral1
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, ca-central-1, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringCaCentral1
+
+  PeeringEuCentral1:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasEuCentral1
+    Properties: 
+      PeerVpcId: !Ref VpcEuCentral1
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, eu-central-1 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: eu-central-1
+
+  PeeringRouteToEuCentral1:
+    Type: AWS::EC2::Route
+    Condition: HasEuCentral1
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, eu-central-1, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringEuCentral1
+
+  PeeringEuWest1:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasEuWest1
+    Properties: 
+      PeerVpcId: !Ref VpcEuWest1
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, eu-west-1 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: eu-west-1
+
+  PeeringRouteToEuWest1:
+    Type: AWS::EC2::Route
+    Condition: HasEuWest1
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, eu-west-1, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringEuWest1
+
+  PeeringEuWest2:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasEuWest2
+    Properties: 
+      PeerVpcId: !Ref VpcEuWest2
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, eu-west-2 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: eu-west-2
+
+  PeeringRouteToEuWest2:
+    Type: AWS::EC2::Route
+    Condition: HasEuWest2
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, eu-west-2, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringEuWest2
+
+  PeeringEuWest3:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasEuWest3
+    Properties: 
+      PeerVpcId: !Ref VpcEuWest3
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, eu-west-3 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: eu-west-3
+
+  PeeringRouteToEuWest3:
+    Type: AWS::EC2::Route
+    Condition: HasEuWest3
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, eu-west-3, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringEuWest3
+
+  PeeringSaEast1:
+    Type: AWS::EC2::VPCPeeringConnection
+    Condition: HasSaEast1
+    Properties: 
+      PeerVpcId: !Ref VpcSaEast1
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, sa-east-1 ] ]  
+      VpcId: !Ref VPC
+      PeerOwnerId: !Ref 'AWS::AccountId'
+      PeerRegion: sa-east-1
+
+  PeeringRouteToSaEast1:
+    Type: AWS::EC2::Route
+    Condition: HasSaEast1
+    Properties:
+      DestinationCidrBlock: !FindInMap [ RegionMapping, sa-east-1, Cidr ]
+      RouteTableId: !Ref RouteTable
+      VpcPeeringConnectionId: !Ref PeeringSaEast1
+  
+Outputs:
+  DomainCertificate:
+    Value: !Ref DomainCertificate
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, DomainCertificate ] ]
+  ClientBucket:
+    Value: !Ref ClientBucket
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, ClientBucket ] ]
+  SuricataBucket:
+    Value: !Ref SuricataBucket
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, SuricataBucket ] ]
+  SpeedTestBucket:
+    Value: !Ref SpeedTestBucket
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, SpeedTestBucket ] ]
+  VPCId:
+    Value: !Ref VPC
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, VPCId ] ]
+  BaseRouteTableId:
+    Value: !Ref RouteTable
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, BaseRouteTableId ] ]
+  TestVPCId:
+    Value: !Ref TestVPC
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, TestVPCId ] ]
+  SubnetId:
+    Value: !Ref Subnet
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, SubnetId ] ]
+  Subnet2Id:
+    Value: !Ref Subnet2
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, Subnet2Id ] ]
+  SubnetInternalId:
+    Value: !Ref SubnetInternal
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, SubnetInternalId ] ]
+  SubnetInternal2Id:
+    Value: !Ref SubnetInternal2
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, SubnetInternal2Id ] ]
+  TestSubnetId:
+    Value: !Ref TestSubnet
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, TestSubnetId ] ]
+  TestSubnet2Id:
+    Value: !Ref TestSubnet2
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, TestSubnet2Id ] ]
+  TestPrivateSubnetId:
+    Value: !Ref TestPrivateSubnet
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, TestPrivateSubnet ] ]
+  TestPrivateSubnet2Id:
+    Value: !Ref TestPrivateSubnet2
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, TestPrivateSubnet2 ] ]
+  TestCodeBuildSecurityGroupId:
+    Value: !Ref TestCodeBuildSecurityGroup
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, TestCodeBuildSecurityGroupId ] ]
+  DatabaseSecurityGroupId:
+    Value: !Ref DatabaseSecurityGroup
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, DatabaseSecurityGroupId ] ]
+  RedisSecurityGroupId:
+    Value: !Ref RedisSecurityGroup
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, RedisSecurityGroupId ] ]
+  HelperSecurityGroupId:
+    Value: !Ref HelperSecurityGroup
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, HelperSecurityGroupId ] ]
+  HelperDeploymentGroup:
+    Value: !Ref HelperDeploymentGroup
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, HelperDeploymentGroup ] ]
+  HelperApplication:
+    Value: !Ref HelperApplication
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, HelperApplication ] ]
+  HelperInstanceProfile:
+    Value: !Ref HelperInstanceProfile
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, HelperInstanceProfile ] ]
+  SourcesEFSSecurityGroupId:
+    Value: !Ref SourcesEFSSecurityGroup
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, SourcesEFSSecurityGroupId ] ]
+  SourcesEFSId:
+    Value: !Ref SourcesEFS
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, SourcesEFSId ] ]
+  PrivateHostedZoneId:
+    Value: !Ref PrivateHostedZone
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, PrivateHostedZoneId ] ]

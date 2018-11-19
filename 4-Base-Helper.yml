@@ -1,0 +1,653 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Helper Server. There is no internal load balancer because Radius is UDP which AWS load balancers don't support. CodePipeline etc are in 2-Base.yml.
+
+Parameters:
+  
+  Environment:
+    Type: String
+    Description: Name of the environment to bring up.
+
+  # Optional
+  UbuntuAMI:
+    Type: String
+    Description: AMI
+    Default: ""
+  
+  InstanceType:
+    Type: String
+    Description: Instance Type
+    Default: t3.micro
+
+Conditions: 
+  
+  OverrideAMI: !Not [!Equals [!Ref UbuntuAMI, ""]]
+
+Mappings: 
+  
+  RegionMap: 
+    us-east-1: 
+      AMI: ami-0735ea082a1534cac
+      InstanceType: t3.small
+      EbsOptimized: true
+    us-east-2:
+      AMI: ami-04c305e118636bc7d
+      InstanceType: t3.small
+      EbsOptimized: true
+    us-west-1: 
+      AMI: ami-0f5113ce7686689e9
+      InstanceType: t3.small
+      EbsOptimized: true
+    us-west-2: 
+      AMI: ami-01e0cf6e025c036e4
+      InstanceType: t3.small
+      EbsOptimized: true
+    ap-south-1:
+      AMI: ami-0c6c52d7cf1004825
+      InstanceType: t2.small
+      EbsOptimized: false
+    ap-northeast-2:
+      AMI: ami-0035936492be04cff
+      InstanceType: t2.small
+      EbsOptimized: false
+    ap-southeast-1:
+      AMI: ami-0d97809b54a5f01ba
+      InstanceType: t3.small
+      EbsOptimized: true
+    ap-southeast-2:
+      AMI: ami-05162512c82cb460f
+      InstanceType: t2.small
+      EbsOptimized: false
+    ap-northeast-1:
+      AMI: ami-06317ca3b39714f7e
+      InstanceType: t3.small
+      EbsOptimized: true
+    ca-central-1:
+      AMI: ami-0a5443ed7b0a45901
+      InstanceType: t3.small
+      EbsOptimized: true
+    eu-central-1:
+      AMI: ami-0dd0be70cc0d493b7
+      InstanceType: t3.small
+      EbsOptimized: true
+    eu-west-1:
+      AMI: ami-00b36349b3dba2ec3
+      InstanceType: t3.small
+      EbsOptimized: true
+    eu-west-2:
+      AMI: ami-06f77073d7dc4c48a
+      InstanceType: t3.small
+      EbsOptimized: true
+    eu-west-3:
+      AMI: ami-0b26151106502588d
+      InstanceType: t2.small
+      EbsOptimized: false
+    sa-east-1:
+      AMI: ami-0f7c76bfc85e5b4ea
+      InstanceType: t2.small
+      EbsOptimized: false
+
+Resources:
+  
+  # ==================================================
+  # ==================== Helper =====================
+  # ==================================================
+      
+  HelperInstance:
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT20M
+    Properties:
+      DisableApiTermination: false
+      InstanceInitiatedShutdownBehavior: stop
+      CreditSpecification:
+        CPUCredits: unlimited
+      IamInstanceProfile:
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, HelperInstanceProfile ] ]
+      ImageId: !If [OverrideAMI, !Ref UbuntuAMI, !FindInMap [RegionMap, !Ref "AWS::Region", AMI]]
+      InstanceType: !Ref InstanceType
+      EbsOptimized: true
+      Monitoring: true
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, Helper ] ]
+      - Key: Environment
+        Value: !Ref Environment
+      NetworkInterfaces:
+      - DeleteOnTermination: true
+        Description: Primary network interface
+        DeviceIndex: 0
+        SubnetId: 
+          Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, SubnetId ] ]
+        GroupSet:
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, HelperSecurityGroupId ] ]
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash -ex
+            # Install Updates and Python SetupTools (for easy_install)
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update && apt-get dist-upgrade -yq
+            apt-get -yq install python-setuptools
+            # Install CloudFormation Bootstrap
+            easy_install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz
+            ln -s /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup /etc/init.d/cfn-hup
+            chmod +x /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup
+            update-rc.d cfn-hup defaults
+            # Run CloudFormation Init
+            cfn-init -c default --stack ${AWS::StackName} --resource HelperInstance --region ${AWS::Region}
+            # Signal success to CloudFormation on reboot
+            echo "@reboot root /usr/local/bin/cfn-signal --success true --stack ${AWS::StackName} --resource HelperInstance --region ${AWS::Region} 2>&1 | /usr/bin/logger -t cfn_success" >> /etc/cron.d/success_on_reboot            
+            # Reboot to pick up latest patches
+            reboot;
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets: 
+          default:
+            - "unattended-upgrades"
+            - "enable-swap"
+            - "install-pip-and-curl-and-ruby"
+            - "set-region-and-environment"
+            - "install-aws-cloudwatch-and-cli"
+            - "setup-cfn-hup"
+            - "install-node"
+            - "forward-node-port-on-reboot"
+            - "install-pm2"
+            - "install-codedeploy"
+        unattended-upgrades:
+          files:
+            '/etc/apt/apt.conf.d/10periodic':
+              content: |
+                APT::Periodic::Update-Package-Lists "1";
+                APT::Periodic::Download-Upgradeable-Packages "1";
+                APT::Periodic::AutocleanInterval "7";
+                APT::Periodic::Unattended-Upgrade "1";
+              mode: '000644'
+              owner: root
+              group: root
+            '/etc/apt/apt.conf.d/50unattended-upgrades':
+              content: |
+                Unattended-Upgrade::Allowed-Origins {
+                  "${distro_id}:${distro_codename}";
+                  "${distro_id}:${distro_codename}-security";
+                  "${distro_id}ESM:${distro_codename}";
+                };
+              mode: '000644'
+              owner: root
+              group: root
+        unattended-upgrades:
+          files:
+            '/etc/apt/apt.conf.d/10periodic':
+              content: |
+                APT::Periodic::Update-Package-Lists "1";
+                APT::Periodic::Download-Upgradeable-Packages "1";
+                APT::Periodic::AutocleanInterval "7";
+                APT::Periodic::Unattended-Upgrade "1";
+              mode: '000644'
+              owner: root
+              group: root
+            '/etc/apt/apt.conf.d/50unattended-upgrades':
+              content: |
+                Unattended-Upgrade::Allowed-Origins {
+                  "${distro_id}:${distro_codename}";
+                  "${distro_id}:${distro_codename}-security";
+                  "${distro_id}ESM:${distro_codename}";
+                };
+              mode: '000644'
+              owner: root
+              group: root
+        enable-swap:
+          commands:
+            0_enable_swap:
+              command: |
+                dd if=/dev/zero of=/var/spool/swap bs=1M count=1k
+                mkswap /var/spool/swap
+                chmod 0600 /var/spool/swap
+                swapon /var/spool/swap
+            1_persist_on_reboot:
+              command: |
+                echo "/var/spool/swap swap swap defaults 0 0" >> /etc/fstab
+        forward-node-port-on-reboot:
+          commands:
+            0_forward:
+              command: |
+                ETHDEVICE=$(ifconfig -s | grep BMRU | head -n 1 | cut -d" " -f1)
+                echo "@reboot root /sbin/iptables -A PREROUTING -t nat -i $ETHDEVICE -p tcp --dport 80 -j REDIRECT --to-port 3000 2>&1 | /usr/bin/logger -t forward_node_port_on_reboot" > /etc/cron.d/forward_node_port_on_reboot
+                chmod 0644 /etc/cron.d/forward_node_port_on_reboot
+                iptables -A PREROUTING -t nat -i $ETHDEVICE -p tcp --dport 80 -j REDIRECT --to-port 3000
+        install-pip-and-curl-and-ruby:
+          packages:
+            apt:
+              curl: []
+              python-pip: []
+              ruby: []
+        set-region-and-environment:
+          commands:
+            0_set_environment:
+              command: !Sub echo ENVIRONMENT=${Environment} >> /etc/environment
+            1_set_region:
+              command: !Sub echo AWS_DEFAULT_REGION=${AWS::Region} >> /etc/environment
+            2_set_region_node:
+              command: !Sub echo AWS_REGION=${AWS::Region} >> /etc/environment
+            3_set_git_branch:
+              command: !Sub
+                - echo GIT_BRANCH=${Branch} >> /etc/environment
+                - Branch: 
+                    Fn::ImportValue:
+                      !Join [ '-', [ !Ref Environment, GitBranch ] ]
+        install-aws-cloudwatch-and-cli:
+          packages:
+            apt:
+              awscli: []
+          files:
+            '/home/ubuntu/cloudwatch.config':
+              content: !Sub |
+                {
+                  "logs": {
+                    "logs_collected": {
+                      "files": {
+                        "collect_list": [
+                          {
+                            "file_path": "/home/node/logs/app.log",
+                            "log_group_name": "${Environment}-Helper-Node",
+                            "log_stream_name": "{instance_id}-node-log"
+                          },
+                          {
+                            "file_path": "/var/log/cloud-init.log",
+                            "log_group_name": "${Environment}-Helper-Node",
+                            "log_stream_name": "{instance_id}-cloud-init-placeholder"
+                          },
+                          {
+                            "file_path": "/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log",
+                            "log_group_name": "${Environment}-Helper",
+                            "log_stream_name": "{instance_id}-cloudwatch-logs"
+                          },
+                          {
+                            "file_path": "/var/log/amazon/ssm/amazon-ssm-agent.log",
+                            "log_group_name": "${Environment}-Helper",
+                            "log_stream_name": "{instance_id}-aws-ssm"
+                          },
+                          {
+                            "file_path": "/var/log/cfn-hup.log",
+                            "log_group_name": "${Environment}-Helper",
+                            "log_stream_name": "{instance_id}-cfn-hup"
+                          },
+                          {
+                            "file_path": "/var/log/cfn-init.log",
+                            "log_group_name": "${Environment}-Helper",
+                            "log_stream_name": "{instance_id}-cfn-init"
+                          },
+                          {
+                            "file_path": "/var/log/cfn-init-cmd.log",
+                            "log_group_name": "${Environment}-Helper",
+                            "log_stream_name": "{instance_id}-cfn-init-cmd"
+                          },
+                          {
+                            "file_path": "/var/log/cloud-init.log",
+                            "log_group_name": "${Environment}-Helper",
+                            "log_stream_name": "{instance_id}-cloud-init"
+                          },
+                          {
+                            "file_path": "/var/log/cloud-init-output.log",
+                            "log_group_name": "${Environment}-Helper",
+                            "log_stream_name": "{instance_id}-cloud-init-output"
+                          },
+                          {
+                            "file_path": "/var/log/aws/codedeploy-agent/codedeploy-agent.log",
+                            "log_group_name": "${Environment}-Helper",
+                            "log_stream_name": "{instance_id}-aws-codedeploy-agent"
+                          },
+                          {
+                            "file_path": "/opt/codedeploy-agent/deployment-root/deployment-logs/codedeploy-agent-deployments.log",
+                            "log_group_name": "${Environment}-Helper",
+                            "log_stream_name": "{instance_id}-aws-codedeploy-deployments"
+                          },
+                          {
+                            "file_path": "/var/log/syslog",
+                            "log_group_name": "${Environment}-Helper",
+                            "log_stream_name": "{instance_id}-syslog"
+                          },
+                          {
+                            "file_path": "/var/log/unattended-upgrades/unattended-upgrades.log",
+                            "log_group_name": "${Environment}-Helper",
+                            "log_stream_name": "{instance_id}-unattended-upgrades"
+                          },
+                          {
+                            "file_path": "/var/log/unattended-upgrades/unattended-upgrades-dpkg.log",
+                            "log_group_name": "${Environment}-Helper",
+                            "log_stream_name": "{instance_id}-unattended-upgrades-dpkg"
+                          },
+                          {
+                            "file_path": "/var/run/reboot-required.pkgs",
+                            "log_group_name": "${Environment}-Helper",
+                            "log_stream_name": "{instance_id}-reboot-required"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "metrics": {
+                    "append_dimensions": {
+                      "InstanceId": "${!aws:InstanceId}"
+                    },
+                    "metrics_collected": {
+                      "cpu": {
+                        "measurement": [
+                          "cpu_usage_active",
+                          "cpu_usage_iowait",
+                          "cpu_usage_user",
+                          "cpu_usage_system"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "totalcpu": true
+                      },
+                      "disk": {
+                        "measurement": [
+                          "used_percent",
+                          "inodes_free"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "resources": [
+                          "/"
+                        ]
+                      },
+                      "diskio": {
+                        "measurement": [
+                          "io_time"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "resources": [
+                          "/"
+                        ]
+                      },
+                      "mem": {
+                        "measurement": [
+                          "mem_used_percent"
+                        ],
+                        "metrics_collection_interval": 60
+                      },
+                      "swap": {
+                        "measurement": [
+                          "swap_used_percent"
+                        ],
+                        "metrics_collection_interval": 60
+                      }
+                    }
+                  }
+                }
+              mode: '000644'
+              owner: root
+              group: root
+          commands:
+            0_install_cloudwatch:
+              command: |
+                apt-get -yq install unzip
+                wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/linux/amd64/latest/AmazonCloudWatchAgent.zip -P /tmp
+                unzip /tmp/AmazonCloudWatchAgent.zip -d /home/ubuntu/cloudwatch_agent
+                cd /home/ubuntu/cloudwatch_agent
+                ./install.sh
+                /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/home/ubuntu/cloudwatch.config -s
+        setup-cfn-hup:
+           files:
+             '/etc/cfn/cfn-hup.conf':
+               content: !Sub |
+                 [main]
+                 stack=${AWS::StackId}
+                 region=${AWS::Region}
+                 interval=1
+               mode: '000400'
+               owner: root
+               group: root
+             '/etc/cfn/hooks.d/cfn-auto-reloader.conf':
+               content: !Sub |
+                 [cfn-auto-reloader-hook]
+                 triggers=post.update
+                 path=Resources.HelperInstance.Metadata.AWS::CloudFormation::Init
+                 action=cfn-init --verbose --stack=${AWS::StackName} --region=${AWS::Region} --resource=HelperInstance --configsets updateable
+                 runas=root
+               mode: '000400'
+               owner: root
+               group: root
+           services:
+             sysvinit:
+               cfn-hup:
+                 enabled: true
+                 ensureRunning: true
+                 files:
+                 - '/etc/cfn/cfn-hup.conf'
+                 - '/etc/cfn/hooks.d/cfn-auto-reloader.conf'
+        install-node:
+          commands:
+            0_create_user:
+              command: |
+                      adduser \
+                        --system \
+                        --shell /bin/bash \
+                        --gecos 'Node user' \
+                        --group \
+                        --disabled-password \
+                        --home /home/node \
+                        node
+            1_setup:
+              command: curl -sL https://deb.nodesource.com/setup_6.x | bash -
+            2_install:
+              command: apt-get install -yq nodejs
+        install-pm2:
+          commands:
+            0_install:
+              command: npm install pm2 -g
+            1_restart_on_reboot:
+              command: env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u node --hp /home/node
+        install-codedeploy:
+          commands:
+            0_install:
+              command: !Sub |
+                wget -nv "https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install" -O /tmp/install
+                chmod +x /tmp/install && /tmp/install auto
+            1_deploy_on_boot:
+              command: !Sub
+                - echo "@reboot root aws deploy create-deployment --region ${AWS::Region} --application-name ${ApplicationName} --update-outdated-instances-only --deployment-group-name ${DeploymentGroupName} 2>&1 | /usr/bin/logger -t codedeploy" >> /etc/cron.d/codedeploy_on_reboot
+                - ApplicationName:
+                    Fn::ImportValue:
+                      !Sub ${Environment}-HelperApplication
+                  DeploymentGroupName:
+                    Fn::ImportValue:
+                      !Sub ${Environment}-HelperDeploymentGroup
+  
+  HelperRecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties: 
+      ResourceRecords:
+        - !GetAtt HelperInstance.PrivateIp
+      Comment: !Join [ '-', [ !Ref Environment, !Ref HelperInstance ] ]
+      HostedZoneId:
+        Fn::ImportValue: !Sub ${Environment}-PrivateHostedZoneId
+      Name:
+        !Join
+          - ''
+          - - helper.
+            - !Sub ${Environment}-private
+      Type: A
+      TTL: 0
+      Weight: 10
+      SetIdentifier: !Ref "AWS::StackName"
+
+  # ==================================================
+  # ================= CLOUDWATCH ALARMS ==============
+  # ==================================================
+
+  CpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - HelperInstance
+    Properties:
+     ActionsEnabled: true
+     AlarmActions: 
+       - Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+     AlarmDescription: !Sub ${Environment} | Helper CPU
+     MetricName: CPUUtilization
+     Namespace: AWS/EC2
+     Statistic: Average
+     Period: '60'
+     EvaluationPeriods: '2'
+     Threshold: '60'
+     ComparisonOperator: GreaterThanOrEqualToThreshold
+     TreatMissingData: breaching
+     Dimensions:
+     - Name: InstanceId
+       Value: !Ref HelperInstance
+          
+  LowMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - HelperInstance
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | Helper Low Memory
+      MetricName: "mem_used_percent"
+      Namespace: CWAgent
+      Statistic: Maximum
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '80'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: InstanceId
+        Value: !Ref HelperInstance
+  
+  SwapUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - HelperInstance
+      - LowMemoryAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | Helper Swap Usage
+      MetricName: "swap_used_percent"
+      Namespace: CWAgent
+      Statistic: Maximum
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '8'
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: InstanceId
+        Value: !Ref HelperInstance
+  
+  DiskUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - HelperInstance
+      - SwapUsageAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | Helper Disk Usage
+      MetricName: "disk_used_percent"
+      Namespace: CWAgent
+      Statistic: Maximum
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '75'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: InstanceId
+        Value: !Ref HelperInstance
+      - Name: device
+        Value: nvme0n1p1
+      - Name: fstype
+        Value: ext4
+      - Name: path
+        Value: /
+  
+  UpgradeCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - HelperInstance
+      - DiskUsageAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | Helper Upgrade Check
+      MetricName: "Last Upgrade Check Seconds"
+      Namespace: CVPN/Shared
+      Statistic: Maximum
+      Period: '43200'
+      EvaluationPeriods: '1'
+      Threshold: '172800'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: Environment
+        Value: !Ref Environment
+      - Name: InstanceId
+        Value: !Ref HelperInstance
+
+  RestartCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - HelperInstance
+      - UpgradeCheckAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | Helper Restart Check
+      MetricName: "# Packages Require Restart"
+      Namespace: CVPN/Shared
+      Statistic: Minimum
+      Period: '43200'
+      EvaluationPeriods: '1'
+      Threshold: '1'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: Environment
+        Value: !Ref Environment
+      - Name: InstanceId
+        Value: !Ref HelperInstance
+
+  SecurityPackagesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - HelperInstance
+      - RestartCheckAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions:
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | Helper Security Packages Upgradable
+      MetricName: "# Security Packages Upgradable"
+      Namespace: CVPN/Shared
+      Statistic: Minimum
+      Period: '43200'
+      EvaluationPeriods: '2'
+      Threshold: '1'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: Environment
+        Value: !Ref Environment
+      - Name: InstanceId
+        Value: !Ref HelperInstance

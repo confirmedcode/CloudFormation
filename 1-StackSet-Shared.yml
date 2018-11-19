@@ -1,0 +1,854 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Shared functions for both Base and VPN-Base
+
+Parameters:
+  
+  Environment:
+    Type: String
+    Description: Name of the environment to bring up.
+
+  GitBranch:
+    Type: String
+  
+  Domain:
+    Type: String
+
+Mappings: 
+  
+  RegionMapping: 
+    us-east-1:
+      Subdomain: us-east
+      Cidr: 172.16.0.0/17
+    us-east-2:
+      Subdomain: us-east
+      Cidr: 172.16.128.0/17
+    us-west-1:
+      Subdomain: us-west
+      Cidr: 172.17.0.0/17
+    us-west-2:
+      Subdomain: us-west
+      Cidr: 172.17.128.0/17
+    ap-northeast-1:
+      Subdomain: ap-tokyo
+      Cidr: 172.18.0.0/17
+    ap-northeast-2:
+      Subdomain: ap-seoul
+      Cidr: 172.18.128.0/17
+    ap-south-1:
+      Subdomain: ap-mumbai
+      Cidr: 172.19.0.0/17
+    ap-southeast-1:
+      Subdomain: ap-singapore
+      Cidr: 172.19.128.0/17
+    ap-southeast-2:
+      Subdomain: ap-sydney
+      Cidr: 172.20.0.0/17
+    ca-central-1:
+      Subdomain: canada
+      Cidr: 172.20.128.0/17
+    eu-central-1:
+      Subdomain: eu-frankfurt
+      Cidr: 172.21.0.0/17
+    eu-west-1:
+      Subdomain: eu-ireland
+      Cidr: 172.21.128.0/17
+    eu-west-2:
+      Subdomain: eu-london
+      Cidr: 172.22.0.0/17
+    eu-west-3:
+      Subdomain: s1
+      Cidr: 172.22.128.0/17
+    sa-east-1:
+      Subdomain: sa
+      Cidr: 172.23.0.0/17
+
+Resources:
+  
+  # ==================================================
+  # =========== Shared SSM Managed Policy ============
+  # ==================================================  
+  
+  SSMManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      Description: Trimmed version of AmazonEC2RoleforSSM
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Action:
+            - codecommit:GitPull
+            - codecommit:GetBranch
+            - codecommit:ListBranches
+            - codecommit:BatchGetCommits
+            - codecommit:GetCommit
+            - codecommit:GetCommitHistory
+            - codecommit:GetDifferences
+            - codecommit:GetObjectIdentifier
+            - codecommit:GetReferences
+            - codecommit:GetTree
+            - codecommit:BatchGetRepositories
+            - codecommit:GetRepository
+            - codecommit:GetBranch
+            - codecommit:GetCommit
+          Resource:
+            - !Sub arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${Environment}-*
+        - Effect: Allow
+          Action:
+            - codecommit:ListRepositories
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - ssm:DescribeAssociation
+            - ssm:GetDeployablePatchSnapshotForInstance
+            - ssm:GetDocument
+            - ssm:GetManifest
+            # - ssm:GetParameters
+            - ssm:ListAssociations
+            - ssm:ListInstanceAssociations
+            - ssm:PutInventory
+            - ssm:PutComplianceItems
+            - ssm:PutConfigurePackageResult
+            - ssm:UpdateAssociationStatus
+            - ssm:UpdateInstanceAssociationStatus
+            - ssm:UpdateInstanceInformation
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - ssmmessages:CreateControlChannel
+            - ssmmessages:CreateDataChannel
+            - ssmmessages:OpenControlChannel
+            - ssmmessages:OpenDataChannel
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - ec2messages:AcknowledgeMessage
+            - ec2messages:DeleteMessage
+            - ec2messages:FailMessage
+            - ec2messages:GetEndpoint
+            - ec2messages:GetMessages
+            - ec2messages:SendReply
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - cloudwatch:PutMetricData
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - ec2:DescribeInstanceStatus
+            - ec2:DescribeTags
+          Resource: "*"
+        # - Effect: Allow
+        #   Action:
+        #     - ds:CreateComputer
+        #     - ds:DescribeDirectories
+        #   Resource: "*"
+        - Effect: Allow
+          Action:
+            - logs:CreateLogGroup
+            # - logs:CreateLogStream
+            - logs:DescribeLogGroups
+            - logs:DescribeLogStreams
+            # - logs:PutLogEvents
+          Resource: "*"
+        # - Effect: Allow
+        #   Action:
+        #     - s3:PutObject
+        #     - s3:GetObject
+        #     - s3:GetEncryptionConfiguration
+        #     - s3:AbortMultipartUpload
+        #     - s3:ListMultipartUploadParts
+        #     - s3:ListBucket
+        #     - s3:ListBucketMultipartUploads
+        - Effect: Allow
+          Action:
+            - s3:Get*
+            - s3:List*
+          Resource:
+            - !Sub arn:aws:s3:::aws-ssm-${AWS::Region}/*
+            - !Sub arn:aws:s3:::${AWS::Region}-birdwatcher-prod/*
+            - !Join [ '', [ !GetAtt ArtifactBucket.Arn, "/*"] ] 
+            - !Sub arn:aws:s3:::aws-codedeploy-${AWS::Region}/*
+        - Effect: Allow
+          Action:
+            - autoscaling:DescribeAutoScalingInstances
+          Resource: "*"
+  
+  # ==================================================
+  # ================== S3 BUCKETS ====================
+  # ==================================================
+  
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: Artifacts
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ==================================================
+  # ================ PARAMETER STORE =================
+  # ==================================================
+  
+  DomainParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "DOMAIN" ] ]
+      Type: String
+      Value: !Ref Domain
+
+  DomainTestParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "DOMAIN" ] ]
+      Type: String
+      Value: !Ref Domain
+
+  # ==================================================
+  # ============ CODEPIPELINE ROLES ==================
+  # ==================================================
+   
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: 
+              - codebuild.amazonaws.com
+          Action: 
+            - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: AccessCodeCommit
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - codecommit:GitPull
+                - codecommit:GetBranch
+                - codecommit:ListBranches
+                - codecommit:BatchGetCommits
+                - codecommit:GetCommit
+                - codecommit:GetCommitHistory
+                - codecommit:GetDifferences
+                - codecommit:GetObjectIdentifier
+                - codecommit:GetReferences
+                - codecommit:GetTree
+                - codecommit:BatchGetRepositories
+                - codecommit:GetRepository
+                - codecommit:GetBranch
+                - codecommit:GetCommit
+              Resource:
+                - !Sub arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${Environment}-*
+            - Effect: Allow
+              Action:
+                - codecommit:ListRepositories
+              Resource: "*"
+        - PolicyName: CreateVPCNetworkInterface
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - ec2:CreateNetworkInterface
+                - ec2:DescribeDhcpOptions
+                - ec2:DescribeNetworkInterfaces
+                - ec2:DeleteNetworkInterface
+                - ec2:DescribeSubnets
+                - ec2:DescribeSecurityGroups
+                - ec2:DescribeVpcs
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - ec2:CreateNetworkInterfacePermission
+              Resource: "*"
+        - PolicyName: GetSSMParameters
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParametersByPath
+              Resource:
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/TEST/COMMON
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/TEST/ADMIN
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/TEST/MAIN
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/TEST/RENEWER
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/TEST/SUPPORT
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/TEST/HELPER
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/TEST/WEBHOOK
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/TEST/DEBUG
+        - PolicyName: CodeBuild
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Sid: CloudWatchLogsPolicy
+              Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource:
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${Environment}-*
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${Environment}-*:log-stream:*
+            - Sid: CodeCommitPolicy
+              Effect: Allow
+              Action:
+                - codecommit:GitPull
+              Resource:
+                - "*"
+            - Sid: S3GetPutObjectPolicy
+              Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:GetObjectVersion
+                - s3:PutObject
+              Resource:
+                - !Join [ '', [ !GetAtt ArtifactBucket.Arn, "/*"] ]
+            - Sid: S3GetTestClients
+              Effect: Allow
+              Action:
+                - s3:Get*
+                - s3:List*
+              Resource:
+                - arn:aws:s3:::test-confirmedvpn-clients
+                - arn:aws:s3:::test-confirmedvpn-clients/*
+
+  CodeDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codedeploy.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: CodeDeploy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - autoscaling:CompleteLifecycleAction
+                - autoscaling:DeleteLifecycleHook
+                - autoscaling:DescribeAutoScalingGroups
+                - autoscaling:DescribeLifecycleHooks
+                - autoscaling:PutLifecycleHook
+                - autoscaling:RecordLifecycleActionHeartbeat
+                - autoscaling:CreateAutoScalingGroup
+                - autoscaling:UpdateAutoScalingGroup
+                - autoscaling:EnableMetricsCollection
+                - autoscaling:DescribeAutoScalingGroups
+                - autoscaling:DescribePolicies
+                - autoscaling:DescribeScheduledActions
+                - autoscaling:DescribeNotificationConfigurations
+                - autoscaling:DescribeLifecycleHooks
+                - autoscaling:SuspendProcesses
+                - autoscaling:ResumeProcesses
+                - autoscaling:AttachLoadBalancers
+                - autoscaling:PutScalingPolicy
+                - autoscaling:PutScheduledUpdateGroupAction
+                - autoscaling:PutNotificationConfiguration
+                - autoscaling:PutLifecycleHook
+                - autoscaling:DescribeScalingActivities
+                - autoscaling:DeleteAutoScalingGroup
+                - ec2:DescribeInstances
+                - ec2:DescribeInstanceStatus
+                - ec2:TerminateInstances
+                - tag:GetTags
+                - tag:GetResources
+                - sns:Publish
+                - cloudwatch:DescribeAlarms
+                - cloudwatch:PutMetricAlarm
+                - elasticloadbalancing:DescribeLoadBalancers
+                - elasticloadbalancing:DescribeInstanceHealth
+                - elasticloadbalancing:RegisterInstancesWithLoadBalancer
+                - elasticloadbalancing:DeregisterInstancesFromLoadBalancer
+                - elasticloadbalancing:DescribeTargetGroups
+                - elasticloadbalancing:DescribeTargetHealth
+                - elasticloadbalancing:RegisterTargets
+                - elasticloadbalancing:DeregisterTargets
+              Resource: "*"
+            - Sid: S3GetObjectPolicy
+              Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:GetObjectVersion
+              Resource:
+                - !Join [ '', [ !GetAtt ArtifactBucket.Arn, "/*"] ]
+          
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+              - codepipeline.amazonaws.com
+          Action: 
+            - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: CodePipelineAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - codecommit:GitPull
+                - codecommit:GetBranch
+                - codecommit:ListBranches
+                - codecommit:BatchGetCommits
+                - codecommit:GetCommit
+                - codecommit:GetCommitHistory
+                - codecommit:GetDifferences
+                - codecommit:GetObjectIdentifier
+                - codecommit:GetReferences
+                - codecommit:GetTree
+                - codecommit:BatchGetRepositories
+                - codecommit:GetRepository
+                - codecommit:GetBranch
+                - codecommit:GetCommit
+              Resource:
+                - !Sub arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${Environment}-*
+            - Effect: Allow
+              Action:
+                - codecommit:ListRepositories
+              Resource: "*"
+            - Action:
+                - s3:List*
+              Effect: Allow
+              Resource:
+                - !Join [ '', [ !GetAtt ArtifactBucket.Arn] ]
+            - Action:
+                - s3:*
+              Effect: Allow
+              Resource:
+                - !Join [ '', [ !GetAtt ArtifactBucket.Arn, "/*"] ]
+            - Action:
+                - s3:PutObject
+              Effect: Allow
+              Resource:
+                - arn:aws:s3:::codepipeline*
+            - Action:
+                - codecommit:CancelUploadArchive
+                - codecommit:GetBranch
+                - codecommit:GetCommit
+                - codecommit:GetUploadArchiveStatus
+                - codecommit:UploadArchive
+              Effect: Allow
+              Resource: "*"
+            - Action:
+                - codedeploy:CreateDeployment
+                - codedeploy:GetApplicationRevision
+                - codedeploy:GetDeployment
+                - codedeploy:GetDeploymentConfig
+                - codedeploy:RegisterApplicationRevision
+              Effect: Allow
+              Resource: "*"
+            - Action:
+                - lambda:InvokeFunction
+                - lambda:ListFunctions
+              Effect: Allow
+              Resource: "*"
+            - Action:
+                - codebuild:BatchGetBuilds
+                - codebuild:StartBuild
+              Resource: "*"
+              Effect: Allow
+
+  # ==================================================
+  # ======== PARAMETER STORE SECRET FUNCTION =========
+  # ==================================================
+  
+  ParameterStoreFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt ParameterStoreFunctionRole.Arn
+      Runtime: nodejs6.10
+      Timeout: 60
+      Tags:
+        - Key: Name
+          Value: !Ref Environment
+      Code:
+        ZipFile: >
+          var response = require('cfn-response');
+          var aws = require('aws-sdk');
+          var crypto = require('crypto');
+          
+          function generateRandomString(length) {
+            return crypto.randomBytes(Math.ceil(length / 2))
+          	.toString('hex')
+          	.slice(0, length);
+          };
+          
+          exports.handler = function(event, context) {
+            var ssm = new aws.SSM();
+            var props = event.ResourceProperties;
+
+            var splitStackArn = event.StackId.split(':');
+            var region = splitStackArn[3];
+            var accountId = splitStackArn[4];
+            var stackName = splitStackArn[5].split("/")[1];
+            
+            var paramName = props.Name;
+            var paramArn = "arn:aws:ssm:" + region + ":" + accountId + ":parameter" + paramName;
+            
+            var paramValue = props.Value;
+            if (props.GenerateRandomString == "true") {
+              paramValue = generateRandomString(parseInt(props.RandomStringLength))
+            }
+
+            var cfnResponseData = {
+              Name: paramName,
+              Value: paramValue,
+              GenerateRandomString: props.GenerateRandomString,
+              RandomStringLength: props.RandomStringLength
+            }
+            
+            var callback = function(err, resp) {
+              if (err) {
+                response.send(event, context, response.FAILED, cfnResponseData, paramArn, true);            
+              }
+              else {
+                response.send(event, context, response.SUCCESS, cfnResponseData, paramArn, true);            
+              }
+            };
+            if (event.RequestType == "Create") {
+              var params = {
+                Name: paramName,
+                Type: props.Type,
+                Value: paramValue,
+                Overwrite: false
+              }
+              if (props.Description) {
+                params.Description = props.Description;
+              }
+              if (props.KeyId) {
+                params.KeyId = props.KeyId;
+              }
+              ssm.putParameter(params, callback);
+            }
+            else if (event.RequestType == "Update") {
+              var params = {
+                  Name: paramName,
+                  Type: props.Type,
+                  Value: paramValue,
+                  Overwrite: true
+              }
+              if (props.Description) {
+                params.Description = props.Description;
+              }
+              if (props.KeyId) {
+                params.KeyId = props.KeyId;
+              }
+              ssm.putParameter(params, callback);
+            }
+            else if (event.RequestType == "Delete") {
+              ssm.deleteParameter({ Name: paramName }, callback);
+            }
+          };
+          
+  ParameterStoreFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: ParameterStoreFunction
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StackSet-${Environment}-*
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StackSet-${Environment}-*:log-stream:*
+              - Effect: Allow
+                Action:
+                  - ssm:PutParameter
+                  - ssm:DeleteParameter
+                  - kms:Encrypt
+                Resource:
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/*
+  
+  # ==================================================
+  # ============== CLOUDWATCH ALARM EMAIL ============
+  # ==================================================
+  
+  CloudWatchAlarmEmailerTopic:
+    Type: AWS::SNS::Topic
+    Properties: 
+      DisplayName: Admin Alerts
+      Subscription:
+        - Endpoint: !Sub admin@${Domain}
+          Protocol: email
+  
+  AllowSnsTopicPublishPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      PolicyDocument:
+        Id: AllowSnsTopicPublishPolicy
+        Version: '2012-10-17'
+        Statement:
+        - Sid: AllowCWEToPublishEventsToVpnEmailAlarmTopic
+          Effect: Allow
+          Principal:
+            Service: events.amazonaws.com
+          Action: sns:Publish
+          Resource: !Ref CloudWatchAlarmEmailerTopic
+        - Sid: AllowAllToPublishToEmailAlarmTopic
+          Effect: Allow
+          Principal:
+            AWS: "*"
+          Action:
+            - SNS:GetTopicAttributes
+            - SNS:SetTopicAttributes
+            - SNS:AddPermission
+            - SNS:RemovePermission
+            - SNS:DeleteTopic
+            - SNS:Subscribe
+            - SNS:ListSubscriptionsByTopic
+            - SNS:Publish
+            - SNS:Receive
+          Resource: !Ref CloudWatchAlarmEmailerTopic
+          Condition:
+            StringEquals:
+              AWS:SourceOwner: !Ref AWS::AccountId
+      Topics:
+        - !Ref CloudWatchAlarmEmailerTopic
+        
+  # ==================================================
+  # ============ APPLICATION ERROR EMAILER ===========
+  # ==================================================
+  
+  ErrorEmailerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: !Sub >
+          var aws = require('aws-sdk');
+          var zlib = require('zlib');
+          exports.handler = function(event, context) {
+            var payload = new Buffer(event.awslogs.data, 'base64');
+            zlib.gunzip(payload, function(e, result) {
+              if (e) { context.fail(e); }
+              else {
+                result = JSON.parse(result.toString('ascii'));
+                
+                var sns = new aws.SNS();
+                var params = {
+                    Message: JSON.stringify(result, null, 2), 
+                    Subject: "[ERROR] Error Log Attached", 
+                    TopicArn: "${CloudWatchAlarmEmailerTopic}"
+                };
+                sns.publish(params, context.done);
+              }
+            });
+          };
+      Handler: index.handler
+      Role: !GetAtt ErrorEmailerFunctionRole.Arn
+      Runtime: nodejs6.10
+      Timeout: 10
+
+  ErrorEmailerFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: lambda-logs-SNS
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource:
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StackSet-${Environment}-*
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/StackSet-${Environment}-*:log-stream:*
+          - Effect: Allow
+            Action:
+              - sns:Publish
+            Resource: !Ref CloudWatchAlarmEmailerTopic
+  
+  ErrorEmailerCloudWatchPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ErrorEmailerFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: !Sub logs.${AWS::Region}.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+
+  # ==================================================
+  # ============ OS UPDATES/RESTART SCRIPT ===========
+  # ==================================================
+  
+  OsUpdatesStatusUpdaterDocument:
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: Command
+      Content:
+        schemaVersion: "2.2"
+        description: Updates the os_updates_status.sh script and runs it once. The script publishes OS update statuses to CloudWatch.
+        mainSteps:
+        - action: aws:runShellScript
+          name: runShellScript
+          inputs:
+            runCommand:
+              - !Sub | 
+                set -ex
+                cat <<EOT > /home/ubuntu/os_updates_status.sh
+                  printf "Setting environmental variables\n"
+                  export AWS_DEFAULT_REGION=${AWS::Region}
+                  
+                  printf "Getting instance ID and AutoScaling Group Name\n"
+                  INSTANCE_ID=\$(ec2metadata --instance-id)
+                  AUTOSCALING_GROUP_NAME=\$(aws autoscaling describe-auto-scaling-instances --instance-ids=\$INSTANCE_ID --query 'AutoScalingInstances[0]'.AutoScalingGroupName)
+                  
+                  printf "Getting OS Updates Stats\n"
+                  
+                  CURRENT_TIME=\$(date +%s)
+                  LAST_UPGRADE_CHECK_TIME=\$(stat -c "%Y" /var/lib/apt/periodic/update-success-stamp)
+                  SECONDS_SINCE_LAST_UPGRADE_CHECK=\$((\$CURRENT_TIME-\$LAST_UPGRADE_CHECK_TIME))
+                  printf "Seconds since last upgrade check: \$SECONDS_SINCE_LAST_UPGRADE_CHECK\n"
+                  
+                  UPGRADABLE_SECURITY_PACKAGES=\$(apt-get upgrade -s | grep -i xenial-security)
+                  NUM_UPGRADABLE_SECURITY_PACKAGES=\$(printf "\$UPGRADABLE_SECURITY_PACKAGES" | wc -l)   
+                  printf "Upgradable Security Packages:\n \$UPGRADABLE_SECURITY_PACKAGES \n"
+                  
+                  PACKAGES_REQUIRE_RESTART=\$(cat /var/run/reboot-required.pkgs)
+                  NUM_PACKAGES_REQUIRE_RESTART=\$(printf "\$PACKAGES_REQUIRE_RESTART" | wc -l)
+                  printf "Reboot-required packages:\n \$PACKAGES_REQUIRE_RESTART \n"
+                  
+                  printf "Publishing to CloudWatch\n"
+                                    
+                  aws cloudwatch put-metric-data --metric-name "Last Upgrade Check Seconds" --namespace CVPN/Shared --unit Seconds --value \$SECONDS_SINCE_LAST_UPGRADE_CHECK --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
+                  aws cloudwatch put-metric-data --metric-name "# Security Packages Upgradable" --namespace CVPN/Shared --unit Count --value \$NUM_UPGRADABLE_SECURITY_PACKAGES --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
+                	aws cloudwatch put-metric-data --metric-name "# Packages Require Restart" --namespace CVPN/Shared --unit Count --value \$NUM_PACKAGES_REQUIRE_RESTART --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
+                  
+                  if [ \$AUTOSCALING_GROUP_NAME != 'null' ];
+                  then 
+                    aws cloudwatch put-metric-data --metric-name "Last Upgrade Check Seconds" --namespace CVPN/Shared --unit Seconds --value \$SECONDS_SINCE_LAST_UPGRADE_CHECK --dimensions Environment=${Environment},AutoScalingGroupName=\$AUTOSCALING_GROUP_NAME
+                    aws cloudwatch put-metric-data --metric-name "# Security Packages Upgradable" --namespace CVPN/Shared --unit Count --value \$NUM_UPGRADABLE_SECURITY_PACKAGES --dimensions Environment=${Environment},AutoScalingGroupName=\$AUTOSCALING_GROUP_NAME
+                  	aws cloudwatch put-metric-data --metric-name "# Packages Require Restart" --namespace CVPN/Shared --unit Count --value \$NUM_PACKAGES_REQUIRE_RESTART --dimensions Environment=${Environment},AutoScalingGroupName=\$AUTOSCALING_GROUP_NAME
+                  fi
+                EOT
+                chmod +x /home/ubuntu/os_updates_status.sh
+                chown ubuntu:ubuntu /home/ubuntu/os_updates_status.sh
+                echo "* */4 * * * root /home/ubuntu/os_updates_status.sh 2>&1 | /usr/bin/logger -t os_updates_status" > /etc/cron.d/os_updates_status
+                echo "@reboot root /home/ubuntu/os_updates_status.sh 2>&1 | /usr/bin/logger -t os_updates_status" >> /etc/cron.d/os_updates_status
+                chmod 0644 /etc/cron.d/os_updates_status
+                cd /home/ubuntu
+                ./os_updates_status.sh 2>&1 | /usr/bin/logger -t os_updates_status
+                
+  OsUpdatesStatusUpdaterAssociation:
+    Type: AWS::SSM::Association
+    Properties: 
+      AssociationName: !Join [ '-', [ !Ref Environment, Os-Updates-Status-Updater ] ]
+      DocumentVersion: $LATEST
+      Name: !Ref OsUpdatesStatusUpdaterDocument
+      Targets:
+        - Key: tag:Environment
+          Values:
+            - !Ref Environment
+  
+  # ==================================================
+  # ===================  VPN VPC  ====================
+  # ==================================================
+  
+  VpnVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap [ RegionMapping, !Ref "AWS::Region", Cidr ]
+      InstanceTenancy: default
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref Environment, VPN ] ]
+
+Outputs:
+  GitBranch:
+    Value: !Ref GitBranch
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, GitBranch ] ]
+  SSMManagedPolicy:
+    Value: !Ref SSMManagedPolicy
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, SSMManagedPolicy ] ]
+  ArtifactBucket:
+    Value: !Ref ArtifactBucket
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, ArtifactBucket ] ]
+  Domain:
+    Value: !Ref Domain
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, Domain ] ]
+  ParameterStoreFunctionArn:
+    Value: !GetAtt ParameterStoreFunction.Arn
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+  CloudWatchAlarmEmailerTopic:
+    Value: !Ref CloudWatchAlarmEmailerTopic
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+  ErrorEmailerFunctionArn:
+    Value: !GetAtt ErrorEmailerFunction.Arn
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, ErrorEmailerFunctionArn ] ]
+  CodeBuildRoleArn:
+    Value: !GetAtt CodeBuildRole.Arn
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, CodeBuildRoleArn ] ]
+  CodePipelineRoleArn:
+    Value: !GetAtt CodePipelineRole.Arn
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, CodePipelineRoleArn ] ]
+  CodeDeployRoleArn:
+    Value: !GetAtt CodeDeployRole.Arn
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, CodeDeployRoleArn ] ]
+  VpnVPCId:
+    Value: !Ref VpnVPC
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, VpnVPCId ] ]
