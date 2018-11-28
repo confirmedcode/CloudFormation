@@ -453,6 +453,24 @@ Resources:
               - Domain:
                   Fn::ImportValue: !Sub ${Environment}-Domain
       Type: A
+
+  MainIpDNSRecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties: 
+      AliasTarget: 
+        DNSName: !GetAtt MainLoadBalancer.DNSName
+        EvaluateTargetHealth: false
+        HostedZoneId: !GetAtt MainLoadBalancer.CanonicalHostedZoneID
+      Comment: !Join [ '-', [ !Ref Environment, MainLoadBalancer ] ]
+      HostedZoneName: !Sub
+                        - ${Domain}.
+                        - Domain: 
+                            Fn::ImportValue: !Sub ${Environment}-Domain
+      Name: !Sub
+              - ip.${Domain}
+              - Domain: 
+                  Fn::ImportValue: !Sub ${Environment}-Domain
+      Type: A
       
   MainTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
