@@ -515,19 +515,18 @@ Resources:
       Protocol: HTTPS
       SslPolicy: ELBSecurityPolicy-TLS-1-2-Ext-2018-06
 
-  # TODO: Awaiting AWS Support
-  # MainLoadBalancerHttpRedirectListener:
-  #   Type: AWS::ElasticLoadBalancingV2::Listener
-  #   Properties:
-  #     DefaultActions:
-  #       - Type: redirect
-  #         RedirectConfig:
-  #           Port: 443
-  #           Protocol: HTTPS
-  #           StatusCode: HTTP_301
-  #     LoadBalancerArn: !Ref MainLoadBalancer
-  #     Port: 80
-  #     Protocol: HTTP
+  MainLoadBalancerHttpRedirectListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Port: 443
+            Protocol: HTTPS
+            StatusCode: HTTP_301
+      LoadBalancerArn: !Ref MainLoadBalancer
+      Port: 80
+      Protocol: HTTP
           
   MainAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup

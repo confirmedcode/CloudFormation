@@ -149,10 +149,6 @@ On client disconnection from VPN, the VPN server's RADIUS Accounting configurati
 
 Run in `Base` region. This is the Main publicly facing server that hosts the website and API for clients.
 
-### After Completion
-
-Go to EC2 Console, Load Balancers, Main Load Balancer, Listeners, Add Listener, HTTP:80 redirect to HTTPS:443. Save. This step is not currently supported by CloudFormation.
-
 ## 4-Base-Renewer.yml
 
 Run in `Base` region. This is the Renewer server, which updates user subscriptions every day against Stripe, iTunes, and Google Play to ensure subscriptions are correctly set to active or inactive.
