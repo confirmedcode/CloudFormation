@@ -1761,28 +1761,6 @@ Resources:
       Period: '300'
       Statistic: Maximum
       Threshold: '209715200'
-          
-  CpuCreditBalanceAlarm:
-    Type: AWS::CloudWatch::Alarm
-    DependsOn:
-      - Database
-    Properties:
-      ActionsEnabled: true
-      AlarmActions: 
-        - Fn::ImportValue:
-            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
-      AlarmDescription: !Sub ${Environment} | CPU Credit Balance <50 | ${Database}
-      ComparisonOperator: LessThanOrEqualToThreshold
-      Dimensions:
-      - Name: DBInstanceIdentifier
-        Value: !Ref Database
-      EvaluationPeriods: '1'
-      MetricName: CPUCreditBalance
-      TreatMissingData: breaching
-      Namespace: AWS/RDS
-      Period: '300'
-      Statistic: Maximum
-      Threshold: '50'
   
   DatabaseReadLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
