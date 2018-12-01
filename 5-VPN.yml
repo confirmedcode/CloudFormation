@@ -48,62 +48,77 @@ Mappings:
       AMI: ami-0735ea082a1534cac
       InstanceType: t3.small
       EbsOptimized: true
+      FsDevice: nvme0n1p1
     us-east-2:
       AMI: ami-04c305e118636bc7d
       InstanceType: t3.small
       EbsOptimized: true
+      FsDevice: nvme0n1p1
     us-west-1: 
       AMI: ami-0f5113ce7686689e9
       InstanceType: t3.small
       EbsOptimized: true
+      FsDevice: nvme0n1p1
     us-west-2: 
       AMI: ami-01e0cf6e025c036e4
       InstanceType: t3.small
       EbsOptimized: true
+      FsDevice: nvme0n1p1
     ap-south-1:
       AMI: ami-0c6c52d7cf1004825
-      InstanceType: t2.small
+      InstanceType: t2.small # t3 not available
       EbsOptimized: false
+      FsDevice: xvda1
     ap-northeast-2:
       AMI: ami-0035936492be04cff
-      InstanceType: t2.small
-      EbsOptimized: false
+      InstanceType: t3.small
+      EbsOptimized: true
+      FsDevice: nvme0n1p1
     ap-southeast-1:
       AMI: ami-0d97809b54a5f01ba
       InstanceType: t3.small
       EbsOptimized: true
+      FsDevice: nvme0n1p1
     ap-southeast-2:
       AMI: ami-05162512c82cb460f
-      InstanceType: t2.small
+      InstanceType: t2.small # t3 not available in first availability zone
       EbsOptimized: false
+      FsDevice: xvda1
     ap-northeast-1:
       AMI: ami-06317ca3b39714f7e
       InstanceType: t3.small
       EbsOptimized: true
+      FsDevice: nvme0n1p1
     ca-central-1:
       AMI: ami-0a5443ed7b0a45901
       InstanceType: t3.small
       EbsOptimized: true
+      FsDevice: nvme0n1p1
     eu-central-1:
       AMI: ami-0dd0be70cc0d493b7
       InstanceType: t3.small
       EbsOptimized: true
+      FsDevice: nvme0n1p1
     eu-west-1:
       AMI: ami-00b36349b3dba2ec3
       InstanceType: t3.small
       EbsOptimized: true
+      FsDevice: nvme0n1p1
     eu-west-2:
       AMI: ami-06f77073d7dc4c48a
       InstanceType: t3.small
       EbsOptimized: true
+      FsDevice: nvme0n1p1
     eu-west-3:
       AMI: ami-0b26151106502588d
-      InstanceType: t2.small
-      EbsOptimized: false
+      InstanceType: t3.small
+      EbsOptimized: true
+      FsDevice: nvme0n1p1
     sa-east-1:
       AMI: ami-0f7c76bfc85e5b4ea
-      InstanceType: t2.small
-      EbsOptimized: false
+      InstanceType: t3.small
+      EbsOptimized: true
+      FsDevice: nvme0n1p1
 
 Resources:
 
@@ -1377,7 +1392,7 @@ Resources:
       - Name: InstanceId
         Value: !Ref VpnInstance
       - Name: device
-        Value: nvme0n1p1
+        Value: !FindInMap [RegionMap, !Ref "AWS::Region", FsDevice]
       - Name: fstype
         Value: ext4
       - Name: path
