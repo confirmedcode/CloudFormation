@@ -1104,7 +1104,7 @@ Resources:
       Statistic: Maximum
       Period: '300'
       EvaluationPeriods: '1'
-      Threshold: '8'
+      Threshold: '15'
       ComparisonOperator: GreaterThanThreshold
       TreatMissingData: breaching
       Dimensions:
