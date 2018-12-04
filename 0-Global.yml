@@ -361,13 +361,6 @@ Resources:
                 - !Sub
                   - arn:aws:s3:::${CloudTrailBucket}/*
                   - CloudTrailBucket: !Ref CloudTrailBucket
-            - Effect: Allow
-              Action:
-                - s3:GetObject
-              Resource:
-                - !Sub
-                  - arn:aws:s3:::${CloudTrailBucket}/*
-                  - CloudTrailBucket: !Ref CloudTrailBucket
 
   AuditGroup:
     Type: AWS::IAM::Group
