@@ -17,12 +17,7 @@ Parameters:
   TrailName:
     Type: String
     Default: CloudTrail
-  
-  AuditPublicUserPassword:
-    Type: String
-    Default: PublicAudit42!
-    Description: The password for the public audit user account. This is not hidden because it is public.
-  
+
 Resources:
   
   # ========== The CloudTrail ==========
@@ -322,46 +317,58 @@ Resources:
       LogGroupName: !Ref TrailName
 
   # ==================================================
-  # ================ AUDIT IAM GROUP =================
+  # ======= OPENWATCH USER & AUDIT IAM GROUP =========
   # ==================================================
   
-  AuditUserAccessKey:
+  OpenWatchUserAccessKey:
     Type: AWS::IAM::AccessKey
     DependsOn:
       - CloudTrail
+      - OpenWatchUser
     Properties: 
       Status: Active
-      UserName: !Ref AuditUser
-  
-  # The default audit user can't change its own password because it's a shared account
-  AuditUser:
+      UserName: !Ref OpenWatchUser
+
+  OpenWatchUser:
     Type: AWS::IAM::User
     DependsOn:
-      - AuditGroup
       - CloudTrail
+      - CloudTrailBucket
     Properties:
-      Groups:
-        - !Ref AuditGroup
-      LoginProfile:
-        Password: !Ref AuditPublicUserPassword
-        PasswordResetRequired: false
+      UserName: OpenWatch
       Policies:
-        - PolicyName: DenyChangeOwnPassword
+        - PolicyName: OnlyPermissionsForCloudTrailLogs
           PolicyDocument:
             Version: 2012-10-17
             Statement:
-            - Effect: Deny
+            - Effect: Allow
               Action:
-                - iam:GetAccountPasswordPolicy
+                - cloudtrail:DescribeTrails
+                - cloudtrail:ListPublicKeys
               Resource:
                 - "*"
-            - Effect: Deny
+            - Effect: Allow
               Action:
-                - iam:ChangePassword
+                - s3:ListBucket
               Resource:
-                - !Sub arn:aws:iam::${AWS::AccountId}:user/${!aws:username}
-      UserName: Audit-Public
- 
+                - !Sub
+                  - arn:aws:s3:::${CloudTrailBucket}
+                  - CloudTrailBucket: !Ref CloudTrailBucket
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource:
+                - !Sub
+                  - arn:aws:s3:::${CloudTrailBucket}/*
+                  - CloudTrailBucket: !Ref CloudTrailBucket
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource:
+                - !Sub
+                  - arn:aws:s3:::${CloudTrailBucket}/*
+                  - CloudTrailBucket: !Ref CloudTrailBucket
+
   AuditGroup:
     Type: AWS::IAM::Group
     DependsOn:
@@ -369,94 +376,6 @@ Resources:
     Properties:
       GroupName: Audit
       Policies:
-        # Only allow access through EC2 IPs - In case auditors want to hide their IPs on CloudTrail
-        # - PolicyName: OnlyAccessWithEC2IPs
-        #   PolicyDocument:
-        #     Version: '2012-10-17'
-        #     Statement:
-        #       Effect: Deny
-        #       Action: "*"
-        #       Resource: "*"
-        #       Condition:
-        #         NotIpAddress:
-        #           aws:SourceIp:
-        #             - 100.20.0.0/14
-        #             - 100.24.0.0/13
-        #             - 103.4.8.0/21
-        #             - 107.20.0.0/14
-        #             - 108.128.0.0/13
-        #             - 122.248.192.0/18
-        #             - 13.0.0.0/8
-        #             - 157.175.0.0/16
-        #             - 160.1.0.0/16
-        #             - 162.213.232.0/24
-        #             - 174.129.0.0/16
-        #             - 175.41.128.0/18
-        #             - 175.41.192.0/18
-        #             - 176.32.64.0/19
-        #             - 176.34.0.0/19
-        #             - 176.34.128.0/17
-        #             - 176.34.32.0/19
-        #             - 176.34.64.0/18
-        #             - 177.71.128.0/17
-        #             - 18.0.0.0/8
-        #             - 184.169.128.0/17
-        #             - 184.72.0.0/18
-        #             - 184.72.128.0/17
-        #             - 184.72.64.0/18
-        #             - 184.73.0.0/16
-        #             - 185.48.120.0/22
-        #             - 204.236.128.0/18
-        #             - 204.236.192.0/18
-        #             - 216.182.224.0/21
-        #             - 216.182.232.0/22
-        #             - 216.182.236.0/23
-        #             - 216.182.238.0/23
-        #             - 23.20.0.0/14
-        #             - 3.0.0.0/15
-        #             - 3.104.0.0/14
-        #             - 3.112.0.0/14
-        #             - 3.120.0.0/14
-        #             - 3.16.0.0/14
-        #             - 3.8.0.0/14
-        #             - 3.80.0.0/12
-        #             - 34.192.0.0/12
-        #             - 34.208.0.0/12
-        #             - 34.224.0.0/12
-        #             - 34.240.0.0/13
-        #             - 34.248.0.0/13
-        #             - 35.153.0.0/16
-        #             - 35.154.0.0/16
-        #             - 35.155.0.0/16
-        #             - 35.156.0.0/14
-        #             - 35.160.0.0/13
-        #             - 35.168.0.0/13
-        #             - 35.176.0.0/15
-        #             - 35.178.0.0/15
-        #             - 35.180.0.0/16
-        #             - 35.182.0.0/15
-        #             - 46.137.0.0/17
-        #             - 46.137.128.0/18
-        #             - 46.137.192.0/19
-        #             - 46.137.224.0/19
-        #             - 46.51.128.0/18
-        #             - 46.51.192.0/20
-        #             - 46.51.216.0/21
-        #             - 46.51.224.0/19
-        #             - 50.112.0.0/16
-        #             - 50.16.0.0/15
-        #             - 50.18.0.0/16
-        #             - 50.19.0.0/16
-        #             - 52.0.0.0/8
-        #             - 54.0.0.0/8
-        #             - 63.32.0.0/14
-        #             - 67.202.0.0/18
-        #             - 72.44.32.0/19
-        #             - 75.101.128.0/17
-        #             - 79.125.0.0/17
-        #             - 96.127.0.0/17
-        #             - 99.79.0.0/16
-        #             - 99.80.0.0/15
         - PolicyName: ReadCloudWatchLogsAdminAuditCloudTrail
           PolicyDocument:
             Version: 2012-10-17
@@ -500,21 +419,16 @@ Resources:
             Statement:
             - Effect: Allow
               Action:
-                - application-autoscaling:Describe*
-                - autoscaling-plans:Describe*
+                - acm:DescribeCertificate
+                - acm:ListCertificates
                 - autoscaling:Describe*
                 - cloudformation:Describe*
                 - cloudformation:Get*
                 - cloudformation:List*
-                - cloudformation:Estimate*
-                - cloudformation:Preview*
                 - cloudtrail:Describe*
                 - cloudtrail:Get*
                 - cloudtrail:List*
                 - cloudtrail:LookupEvents
-                - cloudwatch:Describe*
-                - cloudwatch:Get*
-                - cloudwatch:List*
                 - codebuild:BatchGet*
                 - codebuild:List*
                 - codecommit:BatchGet*
@@ -527,12 +441,55 @@ Resources:
                 - codedeploy:List*
                 - codepipeline:List*
                 - codepipeline:Get*
-                - ec2:Describe*
-                - ec2:Get*
-                - ec2messages:Get*
+                - ec2:DescribeAddresses
+                - ec2:DescribeDhcpOptions
+                - ec2:DescribeEgressOnlyInternetGateways
+                - ec2:DescribeFlowLogs
+                - ec2:DescribeIamInstanceProfileAssociations
+                - ec2:DescribeImageAttribute
+                - ec2:DescribeImages
+                - ec2:DescribeInstanceAttribute
+                - ec2:DescribeInstances
+                - ec2:DescribeInternetGateways
+                - ec2:DescribeLaunchTemplates
+                - ec2:DescribeLaunchTemplateVersions
+                - ec2:DescribeNatGateways
+                - ec2:DescribeNetworkAcls
+                - ec2:DescribeNetworkInterfaceAttribute
+                - ec2:DescribeNetworkInterfacePermissions
+                - ec2:DescribeNetworkInterfaces
+                - ec2:DescribeRegions
+                - ec2:DescribeReservedInstances
+                - ec2:DescribeRouteTables
+                - ec2:DescribeSecurityGroupReferences
+                - ec2:DescribeSecurityGroups
+                - ec2:DescribeStaleSecurityGroups
+                - ec2:DescribeSubnets
+                - ec2:DescribeTags
+                - ec2:DescribeTransitGatewayAttachments
+                - ec2:DescribeTransitGatewayRouteTables
+                - ec2:DescribeTransitGateways
+                - ec2:DescribeTransitGatewayVpcAttachments
+                - ec2:DescribeVolumeAttribute
+                - ec2:DescribeVolumes
+                - ec2:DescribeVolumesModifications
+                - ec2:DescribeVolumeStatus
+                - ec2:DescribeVpcAttribute
+                - ec2:DescribeVpcEndpointConnectionNotifications
+                - ec2:DescribeVpcEndpointConnections
+                - ec2:DescribeVpcEndpoints
+                - ec2:DescribeVpcEndpointServiceConfigurations
+                - ec2:DescribeVpcEndpointServicePermissions
+                - ec2:DescribeVpcEndpointServices
+                - ec2:DescribeVpcPeeringConnections
+                - ec2:DescribeVpcs
+                - ec2:DescribeVpnConnections
+                - ec2:DescribeVpnGateways
                 - elasticache:Describe*
                 - elasticache:List*
                 - elasticloadbalancing:DescribeLoadBalancers
+                - elasticloadbalancing:DescribeListeners
+                - elasticloadbalancing:DescribeListenerCertificates
                 - iam:getRole
                 - iam:getRolePolicy
                 - iam:getInstanceProfile
@@ -540,24 +497,28 @@ Resources:
                 - iam:getPolicyVersion
                 - iam:ListAttachedRolePolicies
                 - iam:listInstanceProfiles
+                - iam:listInstanceProfilesForRole
                 - iam:listPolicies
                 - iam:listRoles
                 - iam:listRolePolicies
-                - iam:listInstanceProfilesForRole
+                - iam:ListServerCertificates
                 - lambda:List*
                 - lambda:Get*
-                - route53:Get*
-                - route53:List*
-                - route53domains:Get*
-                - route53domains:List*
-                - route53domains:View*
-                - s3:Get*
-                - s3:List*
-                - ses:Get*
-                - ses:List*
-                - ses:Describe*
-                - ssm:List*
-                - tag:Get*
+                - rds:Describe*
+                - route53:GetHostedZone
+                - route53:ListHostedZones
+                - route53:ListHostedZonesByName
+                - route53:ListResourceRecordSets
+                - s3:GetObject
+                - s3:ListAllMyBuckets
+                - s3:ListBucket
+                - ses:ListIdentities
+                - ssm:DescribeAssociation
+                - ssm:DescribeDocument
+                - ssm:DescribeSessions
+                - ssm:ListAssociations
+                - ssm:ListCommands
+                - ssm:ListDocuments
               Resource: "*"
 
   # ==================================================
@@ -611,11 +572,11 @@ Resources:
 
 Outputs:
   
-  AuditUserAccessKeyId:
-    Value: !Ref AuditUserAccessKey
+  OpenWatchUserAccessKeyId:
+    Value: !Ref OpenWatchUserAccessKey
     Export:
-      Name: AuditUserAccessKeyId
-  AuditUserAccessKeySecret:
-    Value: !GetAtt AuditUserAccessKey.SecretAccessKey
+      Name: OpenWatchUserAccessKeyId
+  OpenWatchUserAccessKeySecret:
+    Value: !GetAtt OpenWatchUserAccessKey.SecretAccessKey
     Export:
-      Name: AuditUserAccessKeySecret
+      Name: OpenWatchUserAccessKeySecret
