@@ -399,6 +399,7 @@ Resources:
                 - !Sub
                   - arn:aws:s3:::${CloudTrailBucket}
                   - CloudTrailBucket: !Ref CloudTrailBucket
+                - arn:aws:s3:::stackset-*
             - Effect: Allow
               Action:
                 - s3:GetObject
@@ -406,6 +407,7 @@ Resources:
                 - !Sub
                   - arn:aws:s3:::${CloudTrailBucket}/*
                   - CloudTrailBucket: !Ref CloudTrailBucket
+                - arn:aws:s3:::stackset-*/*
         - PolicyName: AuditReadOnly
           PolicyDocument:
             Version: 2012-10-17
@@ -502,9 +504,7 @@ Resources:
                 - route53:ListHostedZones
                 - route53:ListHostedZonesByName
                 - route53:ListResourceRecordSets
-                - s3:GetObject
                 - s3:ListAllMyBuckets
-                - s3:ListBucket
                 - ses:ListIdentities
                 - ssm:DescribeAssociation
                 - ssm:DescribeDocument
