@@ -208,3 +208,16 @@ Run multiple times in each region, once for each VPN instance. Stack name is for
 Ensure there is a CNAME record pointing to the VPN server batch that's currently active in every region.
 
 Check CodePipeline and ensure that Bandwidth is pushed to all instances.
+
+## Feedback
+If you have any questions, concerns, or other feedback, please let us know any feedback in Github issues or by e-mail.
+
+We also have a bug bounty program that can be found here: https://hackerone.com/confirmed_inc
+
+## License
+
+This project is licensed under the GPL License - see the [LICENSE.md](LICENSE.md) file for details
+
+## Contact
+
+<engineering@confirmedvpn.com>
