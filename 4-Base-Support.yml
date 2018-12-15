@@ -705,8 +705,9 @@ Resources:
                   },
                   "metrics": {
                     "append_dimensions": {
-                      "AutoScalingGroupName": "${!aws:AutoScalingGroupName}"
+                      "InstanceId": "${!aws:InstanceId}"
                     },
+                    "aggregation_dimensions": [["AutoScalingGroupName"]],
                     "metrics_collected": {
                       "cpu": {
                         "measurement": [
