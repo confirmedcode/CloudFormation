@@ -705,7 +705,8 @@ Resources:
                   },
                   "metrics": {
                     "append_dimensions": {
-                      "InstanceId": "${!aws:InstanceId}"
+                      "InstanceId": "${!aws:InstanceId}",
+                      "AutoScalingGroupName": "${!aws:AutoScalingGroupName}"
                     },
                     "aggregation_dimensions": [["AutoScalingGroupName"]],
                     "metrics_collected": {
@@ -942,8 +943,6 @@ Resources:
       Dimensions:
       - Name: AutoScalingGroupName
         Value: !Ref SupportAutoScalingGroup
-      - Name: cpu
-        Value: cpu-total
 
   LowMemoryAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -1011,12 +1010,6 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: breaching
       Dimensions:
-      - Name: device
-        Value: nvme0n1p1
-      - Name: fstype
-        Value: ext4
-      - Name: path
-        Value: /
       - Name: AutoScalingGroupName
         Value: !Ref SupportAutoScalingGroup
         
