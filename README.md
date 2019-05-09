@@ -68,7 +68,7 @@ The DependsOn attributes on parameters are purely for API throttling -- e.g, Clo
 
 __Configure Git and Push to CodeCommit__
 
-`git clone` each of `Shared`, `Support`, `Admin`, `Main`, `Webhook`, `Renewer`, and `Helper` to a local machine. Then, run the following:
+`git clone` each of `Shared`, `Support`, `Partner`, `Admin`, `Main`, `Webhook`, `Renewer`, and `Helper` to a local machine. Then, run the following:
 
 ```
 REGION=us-east-1
@@ -77,6 +77,7 @@ BRANCH=prod
 REPOS=(
   Shared
   Support
+  Partner
   Admin
   Main
   Webhook
@@ -156,6 +157,10 @@ Run in `Base` region. This is the Renewer server, which updates user subscriptio
 ## 4-Base-Support.yml
 
 Run in `Base` region. Similar to the Admin server, the Support server is only accessible via a whitelisted IP. It's for the Support team to troubleshoot and resolve customer issues. All requests for customer data send a notification to the customer to let them know exactly what's being accessed, when, and why it's being accessed.
+
+## 4-Base-Partner.yml
+
+Run in `Base` region. Similar to the Admin/Support servers, the Support server is only accessible via a whitelisted IP. It's for the Partners to view anonymous, aggregated analytics data for how their referral campaigns are doing. There is no access to personal user data of any kind.
 
 ## 4-Base-Webhook.yml
 Run in `Base` region. Webhook for Stripe that mostly sends emails to users when something needs to be corrected, like when their payment method is about to expire.

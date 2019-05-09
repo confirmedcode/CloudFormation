@@ -149,7 +149,7 @@ Resources:
       Monitoring: true
       Tags:
       - Key: Name
-        Value: !Join [ '-', [ !Ref Environment, VPN ] ]
+        Value: !Join [ '-', [ !Ref Environment, VPN-IKEv2 ] ]
       - Key: Environment
         Value: !Ref Environment
       IamInstanceProfile:
@@ -189,6 +189,61 @@ Resources:
             - "install-strongswan"
             - "copy-certs"
             - "install-aws-codedeploy"
+          updateable:
+            - "fix-suricata-check"
+            - "update-suricata-yaml"
+        fix-suricata-check:
+          files:
+            '/etc/cron.d/suricata_check':
+              content: "*/15 * * * * root /home/ubuntu/suricata-check.sh 2>&1 | /usr/bin/logger -t suricata_check\n"
+              mode: '000644'
+              owner: root
+              group: root
+        update-suricata-yaml:
+          files:
+            '/home/ubuntu/suricata-check.sh':
+              content: !Sub
+                - |
+                  #!/bin/bash
+                  set -ex
+                  printf "Suricata Rules Conf Check\n";
+                  if pgrep suricata-update >/dev/null 2>&1
+                    then
+                      echo "suricata-update already running. Quitting.";
+                      exit 0;
+                  fi
+                  printf "Updating Rules from S3\n";
+                  LOWERCASED_BUCKET=`echo ${SuricataBucket} | awk '{print tolower($0)}'`;
+                  REGION=`aws s3api get-bucket-location --bucket $LOWERCASED_BUCKET --output text`;
+                  if [ "$REGION" = "None" ]; then
+                     REGION="us-east-1"
+                  fi
+                  aws s3 cp s3://$LOWERCASED_BUCKET/confirmed.rules /etc/suricata/local-rules/confirmed.rules --region $REGION
+                  aws s3 cp s3://$LOWERCASED_BUCKET/drop.conf /etc/suricata/drop.conf --region $REGION
+                  aws s3 cp s3://$LOWERCASED_BUCKET/disable.conf /etc/suricata/disable.conf --region $REGION
+                  aws s3 cp s3://$LOWERCASED_BUCKET/enable.conf /etc/suricata/enable.conf --region $REGION
+                  aws s3 cp s3://$LOWERCASED_BUCKET/modify.conf /etc/suricata/modify.conf --region $REGION
+                  aws s3 cp s3://$LOWERCASED_BUCKET/update.yaml /etc/suricata/update.yaml --region $REGION
+                  printf "Running update\n";
+                  /usr/bin/suricata-update --no-test \
+                  --ignore *deleted.rules \
+                  --ignore *app-layer-events.rules \
+                  --ignore *tls-events.rules \
+                  --ignore *http-events.rules \
+                  --ignore *emerging-icmp_info.rules \
+                  --ignore *emerging-trojan.rules \
+                  --ignore *emerging-malware.rules \
+                  --ignore *emerging-mobile_malware.rules \
+                  --ignore *botcc.rules \
+                  --ignore *stream-events.rules \
+                  --ignore *tor.rules \
+                  --ignore *emerging-policy.rules;
+                - SuricataBucket:
+                    Fn::ImportValue:
+                       !Join [ '-', [ !Ref Environment, SuricataBucketVpn ] ]
+              mode: '000544'
+              owner: ubuntu
+              group: ubuntu
         unattended-upgrades:
           files:
             '/etc/apt/apt.conf.d/10periodic':
@@ -879,8 +934,21 @@ Resources:
                   aws s3 cp s3://$LOWERCASED_BUCKET/disable.conf /etc/suricata/disable.conf --region $REGION
                   aws s3 cp s3://$LOWERCASED_BUCKET/enable.conf /etc/suricata/enable.conf --region $REGION
                   aws s3 cp s3://$LOWERCASED_BUCKET/modify.conf /etc/suricata/modify.conf --region $REGION
+                  aws s3 cp s3://$LOWERCASED_BUCKET/update.yaml /etc/suricata/update.yaml --region $REGION
                   printf "Running update\n";
-                  /usr/bin/suricata-update --no-test;
+                  /usr/bin/suricata-update --no-test \
+                  --ignore *deleted.rules \
+                  --ignore *app-layer-events.rules \
+                  --ignore *tls-events.rules \
+                  --ignore *http-events.rules \
+                  --ignore *emerging-icmp_info.rules \
+                  --ignore *emerging-trojan.rules \
+                  --ignore *emerging-malware.rules \
+                  --ignore *emerging-mobile_malware.rules \
+                  --ignore *botcc.rules \
+                  --ignore *stream-events.rules \
+                  --ignore *tor.rules \
+                  --ignore *emerging-policy.rules;
                 - SuricataBucket:
                     Fn::ImportValue:
                        !Join [ '-', [ !Ref Environment, SuricataBucketVpn ] ]
@@ -888,7 +956,7 @@ Resources:
               owner: ubuntu
               group: ubuntu
             '/etc/cron.d/suricata_check':
-              content: "*/15 * * * * root /home/ubuntu/suricata_check.sh 2>&1 | /usr/bin/logger -t suricata_check\n"
+              content: "*/15 * * * * root /home/ubuntu/suricata-check.sh 2>&1 | /usr/bin/logger -t suricata_check\n"
               mode: '000644'
               owner: root
               group: root
@@ -1187,7 +1255,7 @@ Resources:
       EvaluationPeriods: '2'
       Threshold: '1'
       ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: breaching
+      TreatMissingData: ignore
       Dimensions:
       - Name: InstanceId
         Value: !Ref VpnInstance
@@ -1210,7 +1278,7 @@ Resources:
       EvaluationPeriods: '2'
       Threshold: '85'
       ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: breaching
+      TreatMissingData: ignore
       Dimensions:
       - Name: InstanceId
         Value: !Ref VpnInstance
@@ -1260,7 +1328,7 @@ Resources:
       EvaluationPeriods: '2'
       Threshold: '200'
       ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: breaching
+      TreatMissingData: ignore
       Dimensions:
       - Name: InstanceId
         Value: !Ref VpnInstance
@@ -1287,7 +1355,7 @@ Resources:
       EvaluationPeriods: '2'
       Threshold: '100'
       ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: notBreaching
+      TreatMissingData: ignore
       Dimensions:
       - Name: InstanceId
         Value: !Ref VpnInstance
@@ -1314,7 +1382,7 @@ Resources:
       EvaluationPeriods: '2'
       Threshold: '3'
       ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: notBreaching
+      TreatMissingData: ignore
       Dimensions:
       - Name: InstanceId
         Value: !Ref VpnInstance
@@ -1336,12 +1404,12 @@ Resources:
       AlarmDescription: !Sub ${Environment} | VPN Low Memory | ${VpnInstance}
       MetricName: "mem_used_percent"
       Namespace: CWAgent
-      Statistic: Maximum
+      Statistic: Average
       Period: '300'
       EvaluationPeriods: '1'
       Threshold: '80'
       ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: breaching
+      TreatMissingData: ignore
       Dimensions:
       - Name: InstanceId
         Value: !Ref VpnInstance
@@ -1362,9 +1430,9 @@ Resources:
       Statistic: Maximum
       Period: '300'
       EvaluationPeriods: '1'
-      Threshold: '15'
+      Threshold: '50'
       ComparisonOperator: GreaterThanThreshold
-      TreatMissingData: breaching
+      TreatMissingData: ignore
       Dimensions:
       - Name: InstanceId
         Value: !Ref VpnInstance
@@ -1387,7 +1455,7 @@ Resources:
       EvaluationPeriods: '1'
       Threshold: '75'
       ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: breaching
+      TreatMissingData: ignore
       Dimensions:
       - Name: InstanceId
         Value: !Ref VpnInstance
@@ -1416,7 +1484,7 @@ Resources:
       EvaluationPeriods: '1'
       Threshold: '172800'
       ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: breaching
+      TreatMissingData: ignore
       Dimensions:
       - Name: Environment
         Value: !Ref Environment
@@ -1441,7 +1509,7 @@ Resources:
       EvaluationPeriods: '1'
       Threshold: '1'
       ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: breaching
+      TreatMissingData: ignore
       Dimensions:
       - Name: Environment
         Value: !Ref Environment

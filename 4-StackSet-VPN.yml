@@ -222,7 +222,7 @@ Resources:
       DestinationArn: 
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, ErrorEmailerFunctionArn ] ]
-      FilterPattern: '?error ?Error'
+      FilterPattern: 'error -"RTNETLINK answers: File exists"'
       LogGroupName: !Join [ '-', [ !Ref Environment, VPN-Node ] ]
 
   # ==================================================
@@ -319,6 +319,24 @@ Resources:
         - IpProtocol: 50
           CidrIp: 0.0.0.0/0
         - IpProtocol: 51
+          CidrIp: 0.0.0.0/0
+  
+  VpnOpenVpnSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId:
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, VpnVPCId ] ]
+      GroupDescription: Enable HTTPS
+      Tags:
+        - Key: Name
+          Value: VPN-OpenVPN
+        - Key: Environment
+          Value: !Ref Environment
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
           CidrIp: 0.0.0.0/0
 
   # ==================================================
@@ -606,6 +624,10 @@ Outputs:
     Value: !Ref VpnSecurityGroup
     Export:
       Name: !Join [ '-', [ !Ref Environment, VpnSecurityGroupId ] ]
+  VpnOpenVpnSecurityGroupId:
+    Value: !Ref VpnOpenVpnSecurityGroup
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, VpnOpenVpnSecurityGroupId ] ]
   VpnRegion:
     Value: !FindInMap [ RegionMapping, !Ref "AWS::Region", Subdomain ]
     Export:

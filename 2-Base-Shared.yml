@@ -1,6 +1,6 @@
 ---
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Base Shared for Main, Renewer, Admin, Helper, Support, Webhook Servers. Includes Networking, EFS, Database, Security Groups, etc.
+Description: Base Shared for Main, Renewer, Admin, Helper, Support, Partner, Webhook Servers. Includes Networking, EFS, Database, Security Groups, etc.
 
 Parameters:
 
@@ -109,8 +109,8 @@ Parameters:
     Type: String
   VpcEuWest2:
     Type: String
-  VpcEuWest3:
-    Type: String
+  # VpcEuWest3:
+  #   Type: String
   VpcSaEast1:
     Type: String
 
@@ -129,7 +129,7 @@ Conditions:
   HasEuCentral1: !Not [!Equals [!Ref VpcEuCentral1, ""]]
   HasEuWest1: !Not [!Equals [!Ref VpcEuWest1, ""]]
   HasEuWest2: !Not [!Equals [!Ref VpcEuWest2, ""]]
-  HasEuWest3: !Not [!Equals [!Ref VpcEuWest3, ""]]
+  # HasEuWest3: !Not [!Equals [!Ref VpcEuWest3, ""]]
   HasSaEast1: !Not [!Equals [!Ref VpcSaEast1, ""]]
 
 Mappings: 
@@ -174,9 +174,9 @@ Mappings:
     eu-west-2:
       Subdomain: eu-london
       Cidr: 172.22.0.0/17
-    eu-west-3:
-      Subdomain: s1
-      Cidr: 172.22.128.0/17
+    # eu-west-3:
+    #   Subdomain: s1
+    #   Cidr: 172.22.128.0/17
     sa-east-1:
       Subdomain: sa
       Cidr: 172.23.0.0/17
@@ -257,6 +257,11 @@ Resources:
     Properties:
       RepositoryName: !Sub ${Environment}-Support
   
+  PartnerCodeCommit:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Sub ${Environment}-Partner
+  
   WebhookCodeCommit:
     Type: AWS::CodeCommit::Repository
     Properties:
@@ -276,6 +281,11 @@ Resources:
     DeletionPolicy: Retain
     Properties:
       AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
       VersioningConfiguration:
         Status: Enabled
       Tags:
@@ -304,6 +314,11 @@ Resources:
       AccessControl: PublicRead
       AccelerateConfiguration:
         AccelerationStatus: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
       Tags:
         - Key: Name
           Value: SpeedTest
@@ -1103,13 +1118,68 @@ Resources:
       GenerateRandomString: true
       RandomStringLength: 42
       Value: ""
+
+  # ================ PARTNER DATABASE =================
+  
+  DatabasePartnerPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestSupportSessionSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "PARTNER", "PG_PARTNER_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+
+  TestDatabasePartnerPasswordParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - DatabasePartnerPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "PARTNER", "PG_PARTNER_PASSWORD" ] ]
+      ServiceToken:
+        Fn::ImportValue: !Sub ${Environment}-ParameterStoreFunctionArn
+      Type: SecureString
+      GenerateRandomString: false
+      Value: "partner_pw"  
+      
+  PartnerSessionSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestDatabasePartnerPasswordParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "PARTNER", "PARTNER_SESSION_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+
+  TestPartnerSessionSecretParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - PartnerSessionSecretParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "PARTNER", "PARTNER_SESSION_SECRET" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
       
   # ================ HELPER DATABASE =================
   
   DatabaseHelperPasswordParameter:
     Type: Custom::ParameterStoreFunction
     DependsOn:
-      - TestSupportSessionSecretParameter
+      - TestPartnerSessionSecretParameter
     Properties:
       Name: !Join [ '/', [ "", !Ref Environment, "HELPER", "PG_HELPER_PASSWORD" ] ]
       ServiceToken:
@@ -1847,14 +1917,14 @@ Resources:
     Properties: 
       AtRestEncryptionEnabled: true
       AuthToken: !GetAtt RedisPasswordParameter.Value
-      AutomaticFailoverEnabled: true
+      AutomaticFailoverEnabled: true # false for non-production environments
       AutoMinorVersionUpgrade: true
       CacheNodeType: cache.m4.large
       CacheParameterGroupName: default.redis4.0
       CacheSubnetGroupName: !Ref RedisSubnetGroup
       Engine: redis
       EngineVersion: 4.0.10
-      NumCacheClusters: 2
+      NumCacheClusters: 2 # 1 for non-production environments
       Port: 6379
       PreferredCacheClusterAZs:
         - Fn::Select: 
@@ -2456,11 +2526,11 @@ Resources:
           - VPCId: !Ref VpcEuWest2
             VPCRegion: eu-west-2
           - !Ref "AWS::NoValue"
-        - !If 
-          - HasEuWest3
-          - VPCId: !Ref VpcEuWest3
-            VPCRegion: eu-west-3
-          - !Ref "AWS::NoValue"
+        # - !If
+        #   - HasEuWest3
+        #   - VPCId: !Ref VpcEuWest3
+        #     VPCRegion: eu-west-3
+        #   - !Ref "AWS::NoValue"
         - !If 
           - HasSaEast1
           - VPCId: !Ref VpcSaEast1
@@ -2778,25 +2848,25 @@ Resources:
       RouteTableId: !Ref RouteTable
       VpcPeeringConnectionId: !Ref PeeringEuWest2
 
-  PeeringEuWest3:
-    Type: AWS::EC2::VPCPeeringConnection
-    Condition: HasEuWest3
-    Properties: 
-      PeerVpcId: !Ref VpcEuWest3
-      Tags:
-      - Key: Name
-        Value: !Join [ '-', [ !Ref Environment, eu-west-3 ] ]  
-      VpcId: !Ref VPC
-      PeerOwnerId: !Ref 'AWS::AccountId'
-      PeerRegion: eu-west-3
-
-  PeeringRouteToEuWest3:
-    Type: AWS::EC2::Route
-    Condition: HasEuWest3
-    Properties:
-      DestinationCidrBlock: !FindInMap [ RegionMapping, eu-west-3, Cidr ]
-      RouteTableId: !Ref RouteTable
-      VpcPeeringConnectionId: !Ref PeeringEuWest3
+  # PeeringEuWest3:
+  #   Type: AWS::EC2::VPCPeeringConnection
+  #   Condition: HasEuWest3
+  #   Properties:
+  #     PeerVpcId: !Ref VpcEuWest3
+  #     Tags:
+  #     - Key: Name
+  #       Value: !Join [ '-', [ !Ref Environment, eu-west-3 ] ]
+  #     VpcId: !Ref VPC
+  #     PeerOwnerId: !Ref 'AWS::AccountId'
+  #     PeerRegion: eu-west-3
+  #
+  # PeeringRouteToEuWest3:
+  #   Type: AWS::EC2::Route
+  #   Condition: HasEuWest3
+  #   Properties:
+  #     DestinationCidrBlock: !FindInMap [ RegionMapping, eu-west-3, Cidr ]
+  #     RouteTableId: !Ref RouteTable
+  #     VpcPeeringConnectionId: !Ref PeeringEuWest3
 
   PeeringSaEast1:
     Type: AWS::EC2::VPCPeeringConnection

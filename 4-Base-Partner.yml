@@ -1,6 +1,6 @@
 ---
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Support Instance - Node server for support team / customer requests.
+Description: Partner Instance - Node server for partner dashboard.
 
 Parameters:
   
@@ -21,7 +21,7 @@ Parameters:
   
   AllowedIp:
     Type: String
-    Description: IP allowed to access Support
+    Description: IP allowed to access Partner
     Default: 192.168.0.0/32
     
 Conditions: 
@@ -98,7 +98,7 @@ Resources:
   # ============= Instance Role ======================
   # ==================================================
              
-  SupportRole:
+  PartnerRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -114,7 +114,7 @@ Resources:
           - Fn::ImportValue:
               !Join [ '-', [ !Ref Environment, SSMManagedPolicy ] ]
       Policies:
-        - PolicyName: !Sub ${Environment}-Support
+        - PolicyName: !Sub ${Environment}-Partner
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -123,33 +123,33 @@ Resources:
                 - ssm:GetParametersByPath
               Resource:
                 - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/COMMON
-                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/SUPPORT
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/PARTNER
             - Effect: Allow
               Action:
                 - logs:CreateLogStream
                 - logs:PutLogEvents
               Resource:
-                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-Support
-                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-Support:log-stream:*
-                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-Support-Node
-                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-Support-Node:log-stream:*
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-Partner
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-Partner:log-stream:*
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-Partner-Node
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-Partner-Node:log-stream:*
             - Effect: Allow
               Action:
                 - ses:SendEmail
                 - ses:SendRawEmail
               Resource: "*"
 
-  SupportInstanceProfile:
+  PartnerInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Roles:
-        - !Ref SupportRole
+        - !Ref PartnerRole
       
   # ==================================================
   # =================== SECURITY GROUPS ==============
   # ==================================================
   
-  SupportSecurityGroup:
+  PartnerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       VpcId: 
@@ -158,11 +158,11 @@ Resources:
       GroupDescription: Database Postgres In
       Tags:
         - Key: Name
-          Value: Support
+          Value: Partner
         - Key: Environment
           Value: !Ref Environment
 
-  SupportLoadBalancerSecurityGroup:
+  PartnerLoadBalancerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       VpcId: 
@@ -171,50 +171,60 @@ Resources:
       GroupDescription: HTTPS In
       Tags:
         - Key: Name
-          Value: SupportLoadBalancer
+          Value: PartnerLoadBalancer
         - Key: Environment
           Value: !Ref Environment
   
-  SupportLoadBalancerSupportSecurityGroupIngress:
+  PartnerLoadBalancerPartnerSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
       IpProtocol: tcp
       FromPort: 80
       ToPort: 80
-      Description: Allow HTTP from Support Load Balancer to Support
-      SourceSecurityGroupId: !Ref SupportLoadBalancerSecurityGroup
-      GroupId: !Ref SupportSecurityGroup
+      Description: Allow HTTP from Partner Load Balancer to Partner
+      SourceSecurityGroupId: !Ref PartnerLoadBalancerSecurityGroup
+      GroupId: !Ref PartnerSecurityGroup
   
-  SupportRedisSecurityGroupIngress:
+  PartnerRedisSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
       IpProtocol: tcp
       FromPort: 6379
       ToPort: 6379
-      Description: Allow Redis from Support to Redis
-      SourceSecurityGroupId: !Ref SupportSecurityGroup
+      Description: Allow Redis from Partner to Redis
+      SourceSecurityGroupId: !Ref PartnerSecurityGroup
       GroupId:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, RedisSecurityGroupId ] ]
+          
+  AllowedIpHTTPPartnerLoadBalancerSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      Description: Allow HTTP from allowed IP to Partner Load Balancer
+      CidrIp: !Ref AllowedIp
+      GroupId: !Ref PartnerLoadBalancerSecurityGroup
 
-  AllowedIpSupportLoadBalancerSecurityGroupIngress:
+  AllowedIpPartnerLoadBalancerSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
       IpProtocol: tcp
       FromPort: 443
       ToPort: 443
-      Description: Allow HTTPS from allowed IP to Support Load Balancer
+      Description: Allow HTTPS from allowed IP to Partner Load Balancer
       CidrIp: !Ref AllowedIp
-      GroupId: !Ref SupportLoadBalancerSecurityGroup
+      GroupId: !Ref PartnerLoadBalancerSecurityGroup
           
-  SupportDatabaseSecurityGroupIngress:
+  PartnerDatabaseSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
       IpProtocol: tcp
       FromPort: 5432
       ToPort: 5432
-      Description: Allow Postgres from Support to Database
-      SourceSecurityGroupId: !Ref SupportSecurityGroup
+      Description: Allow Postgres from Partner to Database
+      SourceSecurityGroupId: !Ref PartnerSecurityGroup
       GroupId:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, DatabaseSecurityGroupId ] ]
@@ -223,10 +233,10 @@ Resources:
   # ================== CODEPIPELINE ==================
   # ==================================================
   
-  SupportCodeBuildProject:
+  PartnerCodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: !Join [ '-', [ !Ref Environment, Support ] ]
+      Name: !Join [ '-', [ !Ref Environment, Partner ] ]
       ServiceRole: 
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, CodeBuildRoleArn ] ]
@@ -242,9 +252,9 @@ Resources:
           - Name: CURRENT_SOURCE_ID
             Type: PLAINTEXT
             Value: localsource
-          - Name: PG_ADMIN_PASSWORD
+          - Name: PG_PARTNER_PASSWORD
             Type: PLAINTEXT
-            Value: admin_pw
+            Value: partner_pw
           - Name: AWS_REGION
             Type: PLAINTEXT
             Value: !Ref AWS::Region
@@ -274,26 +284,26 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
   
-  SupportCodePipeline:
+  PartnerCodePipeline:
     Type: AWS::CodePipeline::Pipeline
     DependsOn:
-      - SupportDeploymentGroup
-      - SupportCodeBuildProject
-      - SupportLaunchConfiguration
+      - PartnerDeploymentGroup
+      - PartnerCodeBuildProject
+      - PartnerLaunchConfiguration
     Properties:
       ArtifactStore:
         Location:
           Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, ArtifactBucket ] ]
         Type: S3
-      Name: !Join [ '-', [ !Ref Environment, Support ] ]
+      Name: !Join [ '-', [ !Ref Environment, Partner ] ]
       RoleArn: 
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, CodePipelineRoleArn ] ]
       Stages:
         - Name: CodeCommit
           Actions:
-            - Name: SupportCodeCommit
+            - Name: PartnerCodeCommit
               RunOrder: 1
               ActionTypeId:
                 Category: Source
@@ -301,7 +311,7 @@ Resources:
                 Provider: CodeCommit
                 Version: 1
               Configuration:
-                RepositoryName: !Sub ${Environment}-Support
+                RepositoryName: !Sub ${Environment}-Partner
                 BranchName:
                   Fn::ImportValue:
                     !Join [ '-', [ !Ref Environment, GitBranch ] ]
@@ -309,7 +319,7 @@ Resources:
                 - Name: CodeCommitArtifact
         - Name: CodeBuild
           Actions:
-            - Name: SupportCodeBuild
+            - Name: PartnerCodeBuild
               RunOrder: 2
               ActionTypeId:
                 Category: Build
@@ -317,14 +327,14 @@ Resources:
                 Provider: CodeBuild
                 Version: 1
               Configuration:
-                ProjectName: !Ref SupportCodeBuildProject
+                ProjectName: !Ref PartnerCodeBuildProject
               InputArtifacts:
                 - Name: CodeCommitArtifact
               OutputArtifacts:
                 - Name: CodeBuildArtifact
         - Name: CodeDeploy
           Actions:
-            - Name: SupportCodeDeploy
+            - Name: PartnerCodeDeploy
               RunOrder: 3
               ActionTypeId:
                 Category: Deploy
@@ -332,38 +342,38 @@ Resources:
                 Provider: CodeDeploy
                 Version: 1
               Configuration:
-                ApplicationName: !Ref SupportApplication
-                DeploymentGroupName: !Ref SupportDeploymentGroup
+                ApplicationName: !Ref PartnerApplication
+                DeploymentGroupName: !Ref PartnerDeploymentGroup
               InputArtifacts:
                 - Name: CodeBuildArtifact
   
-  SupportApplication:
+  PartnerApplication:
     Type: AWS::CodeDeploy::Application
     Properties:
-      ApplicationName: !Join [ '-', [ !Ref Environment, Support ] ]
+      ApplicationName: !Join [ '-', [ !Ref Environment, Partner ] ]
 
-  SupportDeploymentGroup: 
+  PartnerDeploymentGroup: 
     Type: AWS::CodeDeploy::DeploymentGroup
     Properties: 
-      ApplicationName: !Ref SupportApplication
+      ApplicationName: !Ref PartnerApplication
       AutoScalingGroups:
-        - !Ref SupportAutoScalingGroup
+        - !Ref PartnerAutoScalingGroup
       DeploymentConfigName: CodeDeployDefault.OneAtATime
       DeploymentStyle:
         DeploymentOption: WITH_TRAFFIC_CONTROL
         DeploymentType: IN_PLACE
       LoadBalancerInfo:
         TargetGroupInfoList:
-          - Name: !GetAtt SupportTargetGroup.TargetGroupName
+          - Name: !GetAtt PartnerTargetGroup.TargetGroupName
       ServiceRoleArn: 
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, CodeDeployRoleArn ] ]
 
   # ==================================================
-  # ===================   Support   ==================
+  # ===================   Partner   ==================
   # ==================================================
   
-  SupportLoadBalancer:
+  PartnerLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       #LoadBalancerAttributes: # prod only
@@ -371,7 +381,7 @@ Resources:
       #    Value: true
       Scheme: internet-facing
       SecurityGroups:
-        - !Ref SupportLoadBalancerSecurityGroup
+        - !Ref PartnerLoadBalancerSecurityGroup
       Subnets:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, SubnetId ] ]
@@ -379,31 +389,31 @@ Resources:
             !Join [ '-', [ !Ref Environment, Subnet2Id ] ]
       Tags:
         - Key: Name
-          Value: SupportLoadBalancer
+          Value: PartnerLoadBalancer
         - Key: Environment
           Value: !Ref Environment
       Type: application
       IpAddressType: ipv4
   
-  SupportDNSRecordSet:
+  PartnerDNSRecordSet:
     Type: AWS::Route53::RecordSet
     Properties: 
       AliasTarget: 
-        DNSName: !GetAtt SupportLoadBalancer.DNSName
+        DNSName: !GetAtt PartnerLoadBalancer.DNSName
         EvaluateTargetHealth: false
-        HostedZoneId: !GetAtt SupportLoadBalancer.CanonicalHostedZoneID
-      Comment: !Join [ '-', [ !Ref Environment, SupportLoadBalancer ] ]
+        HostedZoneId: !GetAtt PartnerLoadBalancer.CanonicalHostedZoneID
+      Comment: !Join [ '-', [ !Ref Environment, PartnerLoadBalancer ] ]
       HostedZoneName: !Sub
                         - ${Domain}.
                         - Domain: 
                             Fn::ImportValue: !Sub ${Environment}-Domain
       Name: !Sub
-              - support.${Domain}
+              - partner.${Domain}
               - Domain: 
                   Fn::ImportValue: !Sub ${Environment}-Domain
       Type: A
       
-  SupportTargetGroup:
+  PartnerTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       HealthCheckIntervalSeconds: 10
@@ -415,12 +425,12 @@ Resources:
       UnhealthyThresholdCount: 2
       Matcher:
         HttpCode: 200
-      Name: !Join [ '-', [ !Ref Environment, Support ] ]
+      Name: !Join [ '-', [ !Ref Environment, Partner ] ]
       Port: 80
       Protocol: HTTP
       Tags:
         - Key: Name
-          Value: SupportTargetGroup
+          Value: PartnerTargetGroup
         - Key: Environment
           Value: !Ref Environment
       TargetGroupAttributes:
@@ -432,34 +442,34 @@ Resources:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, VPCId ] ]
   
-  SupportLoadBalancerListener:
+  PartnerLoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties: 
       Certificates:
         - CertificateArn: 
             Fn::ImportValue: !Sub ${Environment}-DomainCertificate
       DefaultActions:
-        - TargetGroupArn: !Ref SupportTargetGroup
+        - TargetGroupArn: !Ref PartnerTargetGroup
           Type: forward
-      LoadBalancerArn: !Ref SupportLoadBalancer
+      LoadBalancerArn: !Ref PartnerLoadBalancer
       Port: 443
       Protocol: HTTPS
       SslPolicy: ELBSecurityPolicy-TLS-1-2-Ext-2018-06
   
-  # SupportLoadBalancerHttpRedirectListener:
-  #   Type: AWS::ElasticLoadBalancingV2::Listener
-  #   Properties:
-  #     DefaultActions:
-  #       - Type: redirect
-  #         RedirectConfig:
-  #           Port: 443
-  #           Protocol: HTTPS
-  #           StatusCode: HTTP_301
-  #     LoadBalancerArn: !Ref SupportLoadBalancer
-  #     Port: 80
-  #     Protocol: HTTP
+  PartnerLoadBalancerHttpRedirectListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Port: 443
+            Protocol: HTTPS
+            StatusCode: HTTP_301
+      LoadBalancerArn: !Ref PartnerLoadBalancer
+      Port: 80
+      Protocol: HTTP
   
-  SupportAutoScalingGroup:
+  PartnerAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     CreationPolicy:
       AutoScalingCreationPolicy:
@@ -484,18 +494,18 @@ Resources:
       HealthCheckType: EC2
       TerminationPolicies:
         - OldestInstance
-      LaunchConfigurationName: !Ref SupportLaunchConfiguration
+      LaunchConfigurationName: !Ref PartnerLaunchConfiguration
       Tags:
         - Key: Name
-          Value: !Join [ '-', [ !Ref Environment, Support ] ]
+          Value: !Join [ '-', [ !Ref Environment, Partner ] ]
           PropagateAtLaunch: true
         - Key: Environment
           Value: !Ref Environment
           PropagateAtLaunch: true
       TargetGroupARNs:
-        - !Ref SupportTargetGroup
+        - !Ref PartnerTargetGroup
   
-  SupportLaunchConfiguration:
+  PartnerLaunchConfiguration:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
       AssociatePublicIpAddress: true
@@ -506,12 +516,12 @@ Resources:
             VolumeSize: 8
             VolumeType: gp2
       EbsOptimized: true
-      IamInstanceProfile: !Ref SupportInstanceProfile
+      IamInstanceProfile: !Ref PartnerInstanceProfile
       ImageId: !If [OverrideAMI, !Ref UbuntuAMI, !FindInMap [RegionMap, !Ref "AWS::Region", AMI]]
       InstanceMonitoring: true
       InstanceType: !Ref InstanceType
       SecurityGroups:
-        - !Ref SupportSecurityGroup
+        - !Ref PartnerSecurityGroup
       UserData:
         "Fn::Base64":
           !Sub |
@@ -526,9 +536,9 @@ Resources:
             chmod +x /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup
             update-rc.d cfn-hup defaults
             # Run CloudFormation Init
-            cfn-init -c default --stack ${AWS::StackName} --resource SupportLaunchConfiguration --region ${AWS::Region}
+            cfn-init -c default --stack ${AWS::StackName} --resource PartnerLaunchConfiguration --region ${AWS::Region}
             # Signal success to CloudFormation on reboot
-            echo "@reboot root /usr/local/bin/cfn-signal --success true --stack ${AWS::StackName} --resource SupportAutoScalingGroup --region ${AWS::Region} 2>&1 | /usr/bin/logger -t cfn_success" >> /etc/cron.d/success_on_reboot            
+            echo "@reboot root /usr/local/bin/cfn-signal --success true --stack ${AWS::StackName} --resource PartnerAutoScalingGroup --region ${AWS::Region} 2>&1 | /usr/bin/logger -t cfn_success" >> /etc/cron.d/success_on_reboot            
             echo "@reboot root /home/ubuntu/install-codedeploy.sh 2>&1 | /usr/bin/logger -t install_codedeploy" >> /etc/cron.d/install_codedeploy_on_reboot
             # Reboot to pick up latest patches
             reboot
@@ -626,77 +636,77 @@ Resources:
                         "collect_list": [
                           {
                             "file_path": "/home/node/logs/app.log",
-                            "log_group_name": "${Environment}-Support-Node",
+                            "log_group_name": "${Environment}-Partner-Node",
                             "log_stream_name": "{instance_id}-node-log"
                           },
                           {
                             "file_path": "/var/log/cloud-init.log",
-                            "log_group_name": "${Environment}-Support-Node",
+                            "log_group_name": "${Environment}-Partner-Node",
                             "log_stream_name": "{instance_id}-cloud-init-placeholder"
                           },
                           {
                             "file_path": "/var/log/syslog",
-                            "log_group_name": "${Environment}-Support",
+                            "log_group_name": "${Environment}-Partner",
                             "log_stream_name": "{instance_id}-syslog"
                           },
                           {
                             "file_path": "/var/log/cloud-init.log",
-                            "log_group_name": "${Environment}-Support",
+                            "log_group_name": "${Environment}-Partner",
                             "log_stream_name": "{instance_id}-cloud-init"
                           },
                           {
                             "file_path": "/var/log/cloud-init-output.log",
-                            "log_group_name": "${Environment}-Support",
+                            "log_group_name": "${Environment}-Partner",
                             "log_stream_name": "{instance_id}-cloud-init-output"
                           },
                           {
                             "file_path": "/var/log/cfn-init.log",
-                            "log_group_name": "${Environment}-Support",
+                            "log_group_name": "${Environment}-Partner",
                             "log_stream_name": "{instance_id}-cfn-init"
                           },
                           {
                             "file_path": "/var/log/cfn-init-cmd.log",
-                            "log_group_name": "${Environment}-Support",
+                            "log_group_name": "${Environment}-Partner",
                             "log_stream_name": "{instance_id}-cfn-init-cmd"
                           },
                           {
                             "file_path": "/var/log/cfn-hup.log",
-                            "log_group_name": "${Environment}-Support",
+                            "log_group_name": "${Environment}-Partner",
                             "log_stream_name": "{instance_id}-cfn-hup"
                           },
                           {
                             "file_path": "/var/log/amazon/ssm/amazon-ssm-agent.log",
-                            "log_group_name": "${Environment}-Support",
+                            "log_group_name": "${Environment}-Partner",
                             "log_stream_name": "{instance_id}-aws-ssm"
                           },
                           {
                             "file_path": "/var/log/aws/codedeploy-agent/codedeploy-agent.log",
-                            "log_group_name": "${Environment}-Support",
+                            "log_group_name": "${Environment}-Partner",
                             "log_stream_name": "{instance_id}-aws-codedeploy-agent"
                           },
                           {
                             "file_path": "/opt/codedeploy-agent/deployment-root/deployment-logs/codedeploy-agent-deployments.log",
-                            "log_group_name": "${Environment}-Support",
+                            "log_group_name": "${Environment}-Partner",
                             "log_stream_name": "{instance_id}-aws-codedeploy-deployments"
                           },
                           {
                             "file_path": "/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log",
-                            "log_group_name": "${Environment}-Support",
+                            "log_group_name": "${Environment}-Partner",
                             "log_stream_name": "{instance_id}-cloudwatch-logs"
                           },
                           {
                             "file_path": "/var/log/unattended-upgrades/unattended-upgrades.log",
-                            "log_group_name": "${Environment}-Support",
+                            "log_group_name": "${Environment}-Partner",
                             "log_stream_name": "{instance_id}-unattended-upgrades"
                           },
                           {
                             "file_path": "/var/log/unattended-upgrades/unattended-upgrades-dpkg.log",
-                            "log_group_name": "${Environment}-Support",
+                            "log_group_name": "${Environment}-Partner",
                             "log_stream_name": "{instance_id}-unattended-upgrades-dpkg"
                           },
                           {
                             "file_path": "/var/run/reboot-required.pkgs",
-                            "log_group_name": "${Environment}-Support",
+                            "log_group_name": "${Environment}-Partner",
                             "log_stream_name": "{instance_id}-reboot-required"
                           }
                         ]
@@ -781,8 +791,8 @@ Resources:
                content: !Sub |
                  [cfn-auto-reloader-hook]
                  triggers=post.update
-                 path=Resources.SupportLaunchConfiguration.Metadata.AWS::CloudFormation::Init
-                 action=cfn-init --verbose --stack=${AWS::StackName} --region=${AWS::Region} --resource=SupportLaunchConfiguration --configsets updateable
+                 path=Resources.PartnerLaunchConfiguration.Metadata.AWS::CloudFormation::Init
+                 action=cfn-init --verbose --stack=${AWS::StackName} --region=${AWS::Region} --resource=PartnerLaunchConfiguration --configsets updateable
                  runas=root
                mode: '000400'
                owner: root
@@ -832,31 +842,31 @@ Resources:
   # ============ APPLICATION ERROR ALERTS ============
   # ==================================================
   
-  SupportNodeEmailerSubscriptionFilter:
+  PartnerNodeEmailerSubscriptionFilter:
     Type: AWS::Logs::SubscriptionFilter
     DependsOn:
-      - SupportAutoScalingGroup
+      - PartnerAutoScalingGroup
     Properties: 
       DestinationArn:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, ErrorEmailerFunctionArn ] ]
       FilterPattern: '{ $.level = "error" }'
-      LogGroupName: !Join [ '-', [ !Ref Environment, Support-Node ] ]
+      LogGroupName: !Join [ '-', [ !Ref Environment, Partner-Node ] ]
 
   # ==================================================
   # ================= CLOUDWATCH ALARMS ==============
   # ==================================================
     
-  SupportTargetGroupUnhealthyHostAlarm:
+  PartnerTargetGroupUnhealthyHostAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
-      - SupportAutoScalingGroup
+      - PartnerAutoScalingGroup
     Properties:
       ActionsEnabled: true
       AlarmActions: 
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
-      AlarmDescription: !Sub ${Environment} | Support Unhealthy Host
+      AlarmDescription: !Sub ${Environment} | Partner Unhealthy Host
       MetricName: UnHealthyHostCount
       Namespace: AWS/ApplicationELB
       Statistic: Minimum
@@ -867,21 +877,21 @@ Resources:
       TreatMissingData: breaching
       Dimensions:
       - Name: TargetGroup
-        Value: !GetAtt SupportTargetGroup.TargetGroupFullName
+        Value: !GetAtt PartnerTargetGroup.TargetGroupFullName
       - Name: LoadBalancer
-        Value: !GetAtt SupportLoadBalancer.LoadBalancerFullName
+        Value: !GetAtt PartnerLoadBalancer.LoadBalancerFullName
   
-  SupportTargetGroupHealthyHostAlarm:
+  PartnerTargetGroupHealthyHostAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
-      - SupportAutoScalingGroup
-      - SupportTargetGroupUnhealthyHostAlarm
+      - PartnerAutoScalingGroup
+      - PartnerTargetGroupUnhealthyHostAlarm
     Properties:
       ActionsEnabled: true
       AlarmActions: 
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
-      AlarmDescription: !Sub ${Environment} | Support Healthy Host
+      AlarmDescription: !Sub ${Environment} | Partner Healthy Host
       MetricName: HealthyHostCount
       Namespace: AWS/ApplicationELB
       Statistic: Maximum
@@ -892,21 +902,21 @@ Resources:
       TreatMissingData: breaching
       Dimensions:
       - Name: TargetGroup
-        Value: !GetAtt SupportTargetGroup.TargetGroupFullName
+        Value: !GetAtt PartnerTargetGroup.TargetGroupFullName
       - Name: LoadBalancer
-        Value: !GetAtt SupportLoadBalancer.LoadBalancerFullName
+        Value: !GetAtt PartnerLoadBalancer.LoadBalancerFullName
   
-  SupportTargetGroupLatencyAlarm:
+  PartnerTargetGroupLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
-      - SupportAutoScalingGroup
-      - SupportTargetGroupHealthyHostAlarm
+      - PartnerAutoScalingGroup
+      - PartnerTargetGroupHealthyHostAlarm
     Properties:
       ActionsEnabled: true
       AlarmActions: 
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
-      AlarmDescription: !Sub ${Environment} | Support Latency
+      AlarmDescription: !Sub ${Environment} | Partner Latency
       MetricName: TargetResponseTime
       Namespace: AWS/ApplicationELB
       Statistic: Average
@@ -917,21 +927,21 @@ Resources:
       TreatMissingData: ignore
       Dimensions:
       - Name: TargetGroup
-        Value: !GetAtt SupportTargetGroup.TargetGroupFullName
+        Value: !GetAtt PartnerTargetGroup.TargetGroupFullName
       - Name: LoadBalancer
-        Value: !GetAtt SupportLoadBalancer.LoadBalancerFullName
+        Value: !GetAtt PartnerLoadBalancer.LoadBalancerFullName
 
   CpuAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
-      - SupportAutoScalingGroup
-      - SupportTargetGroupLatencyAlarm
+      - PartnerAutoScalingGroup
+      - PartnerTargetGroupLatencyAlarm
     Properties:
       ActionsEnabled: true
       AlarmActions: 
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
-      AlarmDescription: !Sub ${Environment} | Support CPU
+      AlarmDescription: !Sub ${Environment} | Partner CPU
       MetricName: "cpu_usage_active"
       Namespace: CWAgent
       Statistic: Average
@@ -942,19 +952,19 @@ Resources:
       TreatMissingData: breaching
       Dimensions:
       - Name: AutoScalingGroupName
-        Value: !Ref SupportAutoScalingGroup
+        Value: !Ref PartnerAutoScalingGroup
 
   LowMemoryAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
-      - SupportAutoScalingGroup
-      - SupportTargetGroupLatencyAlarm
+      - PartnerAutoScalingGroup
+      - PartnerTargetGroupLatencyAlarm
     Properties:
       ActionsEnabled: true
       AlarmActions: 
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
-      AlarmDescription: !Sub ${Environment} | Support Low Memory
+      AlarmDescription: !Sub ${Environment} | Partner Low Memory
       MetricName: "mem_used_percent"
       Namespace: CWAgent
       Statistic: Maximum
@@ -965,19 +975,19 @@ Resources:
       TreatMissingData: breaching
       Dimensions:
       - Name: AutoScalingGroupName
-        Value: !Ref SupportAutoScalingGroup
+        Value: !Ref PartnerAutoScalingGroup
   
   SwapUsageAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
-      - SupportAutoScalingGroup
+      - PartnerAutoScalingGroup
       - LowMemoryAlarm
     Properties:
       ActionsEnabled: true
       AlarmActions: 
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
-      AlarmDescription: !Sub ${Environment} | Support Swap Usage
+      AlarmDescription: !Sub ${Environment} | Partner Swap Usage
       MetricName: "swap_used_percent"
       Namespace: CWAgent
       Statistic: Maximum
@@ -988,19 +998,19 @@ Resources:
       TreatMissingData: breaching
       Dimensions:
       - Name: AutoScalingGroupName
-        Value: !Ref SupportAutoScalingGroup
+        Value: !Ref PartnerAutoScalingGroup
   
   DiskUsageAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
-      - SupportAutoScalingGroup
+      - PartnerAutoScalingGroup
       - SwapUsageAlarm
     Properties:
       ActionsEnabled: true
       AlarmActions: 
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
-      AlarmDescription: !Sub ${Environment} | Support Disk Usage
+      AlarmDescription: !Sub ${Environment} | Partner Disk Usage
       MetricName: "disk_used_percent"
       Namespace: CWAgent
       Statistic: Maximum
@@ -1011,19 +1021,19 @@ Resources:
       TreatMissingData: breaching
       Dimensions:
       - Name: AutoScalingGroupName
-        Value: !Ref SupportAutoScalingGroup
+        Value: !Ref PartnerAutoScalingGroup
         
   UpgradeCheckAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
-      - SupportAutoScalingGroup
+      - PartnerAutoScalingGroup
       - DiskUsageAlarm
     Properties:
       ActionsEnabled: true
       AlarmActions: 
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
-      AlarmDescription: !Sub ${Environment} | Support Upgrade Check
+      AlarmDescription: !Sub ${Environment} | Partner Upgrade Check
       MetricName: "Last Upgrade Check Seconds"
       Namespace: CVPN/Shared
       Statistic: Maximum
@@ -1036,19 +1046,19 @@ Resources:
       - Name: Environment
         Value: !Ref Environment
       - Name: AutoScalingGroupName
-        Value: !Ref SupportAutoScalingGroup
+        Value: !Ref PartnerAutoScalingGroup
 
   RestartCheckAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
-      - SupportAutoScalingGroup
+      - PartnerAutoScalingGroup
       - UpgradeCheckAlarm
     Properties:
       ActionsEnabled: true
       AlarmActions: 
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
-      AlarmDescription: !Sub ${Environment} | Support Restart Check
+      AlarmDescription: !Sub ${Environment} | Partner Restart Check
       MetricName: "# Packages Require Restart"
       Namespace: CVPN/Shared
       Statistic: Minimum
@@ -1061,19 +1071,19 @@ Resources:
       - Name: Environment
         Value: !Ref Environment
       - Name: AutoScalingGroupName
-        Value: !Ref SupportAutoScalingGroup
+        Value: !Ref PartnerAutoScalingGroup
 
   SecurityPackagesAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
-      - SupportAutoScalingGroup
+      - PartnerAutoScalingGroup
       - RestartCheckAlarm
     Properties:
       ActionsEnabled: true
       AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
-      AlarmDescription: !Sub ${Environment} | Support Security Packages Upgradable
+      AlarmDescription: !Sub ${Environment} | Partner Security Packages Upgradable
       MetricName: "# Security Packages Upgradable"
       Namespace: CVPN/Shared
       Statistic: Minimum
@@ -1086,9 +1096,9 @@ Resources:
       - Name: Environment
         Value: !Ref Environment
       - Name: AutoScalingGroupName
-        Value: !Ref SupportAutoScalingGroup
+        Value: !Ref PartnerAutoScalingGroup
         
-  SupportCodePipelineAlert:
+  PartnerCodePipelineAlert:
     Type: AWS::Events::Rule
     Properties: 
       Description: Alert when CodePipeline Fails
@@ -1101,10 +1111,10 @@ Resources:
           state: 
             - "FAILED"
           pipeline:
-            - !Ref SupportCodePipeline
+            - !Ref PartnerCodePipeline
       State: ENABLED
       Targets:
         - Arn:
             Fn::ImportValue:
               !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
-          Id: !Join [ '-', [ !Ref Environment, Support-CodePipeline-Alert ] ]
+          Id: !Join [ '-', [ !Ref Environment, Partner-CodePipeline-Alert ] ]
