@@ -85,8 +85,8 @@ Parameters:
   # For VPC Peering
   VpcUsEast1:
     Type: String
-  VpcUsEast2:
-    Type: String
+  # VpcUsEast2:
+  #   Type: String
   VpcUsWest1:
     Type: String
   VpcUsWest2:
@@ -117,7 +117,7 @@ Parameters:
 Conditions:
   
   HasUsEast1: !Not [!Equals [!Ref VpcUsEast1, ""]]
-  HasUsEast2: !Not [!Equals [!Ref VpcUsEast2, ""]]
+  # HasUsEast2: !Not [!Equals [!Ref VpcUsEast2, ""]]
   HasUsWest1: !Not [!Equals [!Ref VpcUsWest1, ""]]
   HasUsWest2: !Not [!Equals [!Ref VpcUsWest2, ""]]
   HasApSouth1: !Not [!Equals [!Ref VpcApSouth1, ""]]
@@ -138,9 +138,9 @@ Mappings:
     us-east-1:
       Subdomain: us-east
       Cidr: 172.16.0.0/17
-    us-east-2:
-      Subdomain: us-east
-      Cidr: 172.16.128.0/17
+    # us-east-2:
+    #   Subdomain: us-east
+    #   Cidr: 172.16.128.0/17
     us-west-1:
       Subdomain: us-west
       Cidr: 172.17.0.0/17
@@ -726,10 +726,37 @@ Resources:
       GenerateRandomString: false
       Value: "test7"
       
+  RedisSaltParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - TestEmailSaltParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "REDIS_SALT" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: true
+      RandomStringLength: 42
+      Value: ""
+  
+  TestRedisSaltParameter:
+    Type: Custom::ParameterStoreFunction
+    DependsOn:
+      - RedisSaltParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "REDIS_SALT" ] ]
+      ServiceToken: 
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ParameterStoreFunctionArn ] ]
+      Type: SecureString
+      GenerateRandomString: false
+      Value: "testRedisSalt"
+      
   RedisHostParameter:
     Type: AWS::SSM::Parameter
     DependsOn:
-      - TestEmailSaltParameter
+      - TestRedisSaltParameter
     Properties:
       Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "REDIS_HOST" ] ]
       Type: String
@@ -2466,11 +2493,11 @@ Resources:
           - VPCId: !Ref VpcUsEast1
             VPCRegion: us-east-1
           - !Ref "AWS::NoValue"
-        - !If 
-          - HasUsEast2
-          - VPCId: !Ref VpcUsEast2
-            VPCRegion: us-east-2
-          - !Ref "AWS::NoValue"
+        # - !If
+        #   - HasUsEast2
+        #   - VPCId: !Ref VpcUsEast2
+        #     VPCRegion: us-east-2
+        #   - !Ref "AWS::NoValue"
         - !If 
           - HasUsWest1
           - VPCId: !Ref VpcUsWest1
@@ -2608,25 +2635,25 @@ Resources:
       RouteTableId: !Ref RouteTable
       VpcPeeringConnectionId: !Ref PeeringUsEast1
 
-  PeeringUsEast2:
-    Type: AWS::EC2::VPCPeeringConnection
-    Condition: HasUsEast2
-    Properties: 
-      PeerVpcId: !Ref VpcUsEast2
-      Tags:
-      - Key: Name
-        Value: !Join [ '-', [ !Ref Environment, us-east-2 ] ]  
-      VpcId: !Ref VPC
-      PeerOwnerId: !Ref 'AWS::AccountId'
-      PeerRegion: us-east-2
+  # PeeringUsEast2:
+  #   Type: AWS::EC2::VPCPeeringConnection
+  #   Condition: HasUsEast2
+  #   Properties:
+  #     PeerVpcId: !Ref VpcUsEast2
+  #     Tags:
+  #     - Key: Name
+  #       Value: !Join [ '-', [ !Ref Environment, us-east-2 ] ]
+  #     VpcId: !Ref VPC
+  #     PeerOwnerId: !Ref 'AWS::AccountId'
+  #     PeerRegion: us-east-2
 
-  PeeringRouteToUsEast2:
-    Type: AWS::EC2::Route
-    Condition: HasUsEast2
-    Properties:
-      DestinationCidrBlock: !FindInMap [ RegionMapping, us-east-2, Cidr ]
-      RouteTableId: !Ref RouteTable
-      VpcPeeringConnectionId: !Ref PeeringUsEast2
+  # PeeringRouteToUsEast2:
+  #   Type: AWS::EC2::Route
+  #   Condition: HasUsEast2
+  #   Properties:
+  #     DestinationCidrBlock: !FindInMap [ RegionMapping, us-east-2, Cidr ]
+  #     RouteTableId: !Ref RouteTable
+  #     VpcPeeringConnectionId: !Ref PeeringUsEast2
 
   PeeringUsWest1:
     Type: AWS::EC2::VPCPeeringConnection
