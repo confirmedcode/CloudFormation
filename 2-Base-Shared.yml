@@ -15,6 +15,14 @@ Parameters:
   DatabasePerformanceInsights:
     Type: String
     Default: false
+    
+  RedisAutomaticFailoverEnabled:
+    Type: String
+    Default: true # false for Test environment
+  
+  RedisNumCacheClusters:
+    Type: Number
+    Default: 2 # 1 for Test environment
   
   IosSubscriptionSecret:
     Type: String
@@ -115,6 +123,8 @@ Parameters:
     Type: String
 
 Conditions:
+  
+  CreateSecondRedisAlarm: !Equals [ !Ref RedisNumCacheClusters, 2 ]
   
   HasUsEast1: !Not [!Equals [!Ref VpcUsEast1, ""]]
   # HasUsEast2: !Not [!Equals [!Ref VpcUsEast2, ""]]
@@ -1944,14 +1954,14 @@ Resources:
     Properties: 
       AtRestEncryptionEnabled: true
       AuthToken: !GetAtt RedisPasswordParameter.Value
-      AutomaticFailoverEnabled: true # false for non-production environments
+      AutomaticFailoverEnabled: !Ref RedisAutomaticFailoverEnabled
       AutoMinorVersionUpgrade: true
       CacheNodeType: cache.m4.large
       CacheParameterGroupName: default.redis4.0
       CacheSubnetGroupName: !Ref RedisSubnetGroup
       Engine: redis
       EngineVersion: 4.0.10
-      NumCacheClusters: 2 # 1 for non-production environments
+      NumCacheClusters: !Ref RedisNumCacheClusters
       Port: 6379
       PreferredCacheClusterAZs:
         - Fn::Select: 
@@ -1963,7 +1973,7 @@ Resources:
       ReplicationGroupDescription: RedisReplicationGroup
       SecurityGroupIds:
         - !Ref RedisSecurityGroup
-      SnapshotRetentionLimit: 3
+      SnapshotRetentionLimit: 0
       TransitEncryptionEnabled: true
 
   # ==================================================
@@ -1994,6 +2004,7 @@ Resources:
   
   RedisCpuAlarm2:
     Type: AWS::CloudWatch::Alarm
+    Condition: CreateSecondRedisAlarm
     DependsOn:
       - RedisCpuAlarm1
     Properties:
@@ -2040,6 +2051,7 @@ Resources:
         
   RedisFreeMemoryAlarm2:
     Type: AWS::CloudWatch::Alarm
+    Condition: CreateSecondRedisAlarm
     DependsOn:
       - RedisFreeMemoryAlarm1
     Properties:
@@ -2086,6 +2098,7 @@ Resources:
         
   RedisSwapUsageAlarm2:
     Type: AWS::CloudWatch::Alarm
+    Condition: CreateSecondRedisAlarm
     DependsOn:
       - RedisSwapUsageAlarm1
     Properties:
