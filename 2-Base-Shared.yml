@@ -97,8 +97,8 @@ Parameters:
   #   Type: String
   VpcUsWest1:
     Type: String
-  VpcUsWest2:
-    Type: String
+  # VpcUsWest2:
+  #   Type: String
   VpcApSouth1:
     Type: String
   VpcApNortheast2:
@@ -129,7 +129,7 @@ Conditions:
   HasUsEast1: !Not [!Equals [!Ref VpcUsEast1, ""]]
   # HasUsEast2: !Not [!Equals [!Ref VpcUsEast2, ""]]
   HasUsWest1: !Not [!Equals [!Ref VpcUsWest1, ""]]
-  HasUsWest2: !Not [!Equals [!Ref VpcUsWest2, ""]]
+  # HasUsWest2: !Not [!Equals [!Ref VpcUsWest2, ""]]
   HasApSouth1: !Not [!Equals [!Ref VpcApSouth1, ""]]
   HasApNortheast2: !Not [!Equals [!Ref VpcApNortheast2, ""]]
   HasApSoutheast1: !Not [!Equals [!Ref VpcApSoutheast1, ""]]
@@ -154,9 +154,9 @@ Mappings:
     us-west-1:
       Subdomain: us-west
       Cidr: 172.17.0.0/17
-    us-west-2:
-      Subdomain: us-west
-      Cidr: 172.17.128.0/17
+    # us-west-2:
+    #   Subdomain: us-west
+    #   Cidr: 172.17.128.0/17
     ap-northeast-1:
       Subdomain: ap-tokyo
       Cidr: 172.18.0.0/17
@@ -332,6 +332,24 @@ Resources:
       Tags:
         - Key: Name
           Value: SpeedTest
+        - Key: Environment
+          Value: !Ref Environment
+  
+  AdminAuditBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: PublicRead
+      AccelerateConfiguration:
+        AccelerationStatus: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      Tags:
+        - Key: Name
+          Value: AdminAudit
         - Key: Environment
           Value: !Ref Environment
 
@@ -707,11 +725,29 @@ Resources:
       Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "TRIAL_DAYS" ] ]
       Type: String
       Value: !Ref TrialDays
+      
+  AdminAuditBucketParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - TestTrialDaysParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "ADMIN_AUDIT_BUCKET" ] ]
+      Type: String
+      Value: !Ref AdminAuditBucket
+  
+  TestAdminAuditBucketParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - AdminAuditBucketParameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "ADMIN_AUDIT_BUCKET" ] ]
+      Type: String
+      Value: "test-cvpn-adminaudit"
   
   EmailSaltParameter:
     Type: Custom::ParameterStoreFunction
     DependsOn:
-      - TestTrialDaysParameter
+      - TestAdminAuditBucketParameter
     Properties:
       Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "EMAIL_SALT" ] ]
       ServiceToken: 
@@ -2244,7 +2280,7 @@ Resources:
               Fn::ImportValue:
                 !Join [ '-', [ !Ref Environment, GitBranch ] ]
         Type: LINUX_CONTAINER
-        Image: aws/codebuild/nodejs:6.3.1
+        Image: aws/codebuild/nodejs:10.14.1
       Source:
         Type: CODEPIPELINE
       TimeoutInMinutes: 15
@@ -2259,6 +2295,11 @@ Resources:
       - HelperCodeBuildProject
     Properties:
       ArtifactStore:
+        EncryptionKey:
+          Id:
+            Fn::ImportValue:
+              !Join [ '-', [ !Ref Environment, CodePipelineKeyId ] ]
+          Type: KMS
         Location: 
           Fn::ImportValue:
              !Join [ '-', [ !Ref Environment, ArtifactBucket ] ]
@@ -2417,18 +2458,18 @@ Resources:
       FilterPattern: '{ $.level = "error" }'
       LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node ] ]
   
-  404MetricFilter: 
-    Type: AWS::Logs::MetricFilter
-    DependsOn:
-      - HelperNodeLogsLogGroup
-    Properties: 
-      LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node] ]
-      FilterPattern: "{ $.meta.res.statusCode = 404 }"
-      MetricTransformations: 
-        - 
-          MetricValue: "1"
-          MetricNamespace: !Join [ '-', [ !Ref Environment, Helper-Node, HttpErrors] ]
-          MetricName: "404Count"
+  # 404MetricFilter:
+  #   Type: AWS::Logs::MetricFilter
+  #   DependsOn:
+  #     - HelperNodeLogsLogGroup
+  #   Properties:
+  #     LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node] ]
+  #     FilterPattern: "{ $.meta.res.statusCode = 404 }"
+  #     MetricTransformations:
+  #       -
+  #         MetricValue: "1"
+  #         MetricNamespace: !Join [ '-', [ !Ref Environment, Helper-Node, HttpErrors] ]
+  #         MetricName: "404Count"
 
   401MetricFilter: 
     Type: AWS::Logs::MetricFilter
@@ -2516,11 +2557,11 @@ Resources:
           - VPCId: !Ref VpcUsWest1
             VPCRegion: us-west-1
           - !Ref "AWS::NoValue"
-        - !If 
-          - HasUsWest2
-          - VPCId: !Ref VpcUsWest2
-            VPCRegion: us-west-2
-          - !Ref "AWS::NoValue"
+        # - !If
+        #   - HasUsWest2
+        #   - VPCId: !Ref VpcUsWest2
+        #     VPCRegion: us-west-2
+        #   - !Ref "AWS::NoValue"
         - !If 
           - HasApSouth1
           - VPCId: !Ref VpcApSouth1
@@ -2688,25 +2729,25 @@ Resources:
       RouteTableId: !Ref RouteTable
       VpcPeeringConnectionId: !Ref PeeringUsWest1
 
-  PeeringUsWest2:
-    Type: AWS::EC2::VPCPeeringConnection
-    Condition: HasUsWest2
-    Properties: 
-      PeerVpcId: !Ref VpcUsWest2
-      Tags:
-      - Key: Name
-        Value: !Join [ '-', [ !Ref Environment, us-west-2 ] ]  
-      VpcId: !Ref VPC
-      PeerOwnerId: !Ref 'AWS::AccountId'
-      PeerRegion: us-west-2
-
-  PeeringRouteToUsWest2:
-    Type: AWS::EC2::Route
-    Condition: HasUsWest2
-    Properties:
-      DestinationCidrBlock: !FindInMap [ RegionMapping, us-west-2, Cidr ]
-      RouteTableId: !Ref RouteTable
-      VpcPeeringConnectionId: !Ref PeeringUsWest2
+  # PeeringUsWest2:
+  #   Type: AWS::EC2::VPCPeeringConnection
+  #   Condition: HasUsWest2
+  #   Properties:
+  #     PeerVpcId: !Ref VpcUsWest2
+  #     Tags:
+  #     - Key: Name
+  #       Value: !Join [ '-', [ !Ref Environment, us-west-2 ] ]
+  #     VpcId: !Ref VPC
+  #     PeerOwnerId: !Ref 'AWS::AccountId'
+  #     PeerRegion: us-west-2
+  #
+  # PeeringRouteToUsWest2:
+  #   Type: AWS::EC2::Route
+  #   Condition: HasUsWest2
+  #   Properties:
+  #     DestinationCidrBlock: !FindInMap [ RegionMapping, us-west-2, Cidr ]
+  #     RouteTableId: !Ref RouteTable
+  #     VpcPeeringConnectionId: !Ref PeeringUsWest2
 
   PeeringApSouth1:
     Type: AWS::EC2::VPCPeeringConnection
@@ -2945,6 +2986,10 @@ Outputs:
     Value: !Ref SpeedTestBucket
     Export:
       Name: !Join [ '-', [ !Ref Environment, SpeedTestBucket ] ]
+  AdminAuditBucket:
+    Value: !Ref AdminAuditBucket
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, AdminAuditBucket ] ]
   VPCId:
     Value: !Ref VPC
     Export:

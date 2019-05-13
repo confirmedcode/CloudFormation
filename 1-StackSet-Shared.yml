@@ -213,6 +213,44 @@ Resources:
   # ==================================================
   # ============ CODEPIPELINE ROLES ==================
   # ==================================================
+  
+  CodePipelineKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Used to encrypt/decrypt the artifacts on S3
+      Enabled: true
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: "codepipeline-key"
+        Statement: 
+          - Sid: "Allow encryption, decryption using the key"
+            Effect: Allow
+            Principal:
+              AWS: "*" # We cannot limit to Group, so we allow anyone to use this key. Since it is only used to encrypt/decrypt already-public code, this is fine.
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource:
+              - !Sub arn:aws:s3::${AWS::AccountId}:*-artifactbucket-*/*
+              - !Sub arn:aws:s3::${AWS::AccountId}:*-artifactbucket-*
+              - !Sub arn:aws:s3::${AWS::AccountId}:shared-adminauditbucket-*/*
+              - !Sub arn:aws:s3::${AWS::AccountId}:shared-adminauditbucket-*
+              - !Sub arn:aws:s3::${AWS::AccountId}:shared-artifactbucket-*/*
+              - !Sub arn:aws:s3::${AWS::AccountId}:shared-artifactbucket-*
+            Condition:
+              StringEquals:
+                kms:CallerAccount: !Ref AWS::AccountId
+          - Sid: "Allow administration of the key"
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action:
+              - kms:*
+            Resource: "*"
    
   CodeBuildRole:
     Type: AWS::IAM::Role
@@ -324,6 +362,14 @@ Resources:
               Resource:
                 - arn:aws:s3:::test-confirmedvpn-clients
                 - arn:aws:s3:::test-confirmedvpn-clients/*
+            - Action:
+                - kms:DescribeKey
+                - kms:GenerateDataKey*
+                - kms:Encrypt
+                - kms:ReEncrypt*
+                - kms:Decrypt
+              Resource: !GetAtt CodePipelineKey.Arn
+              Effect: Allow
 
   CodeDeployRole:
     Type: AWS::IAM::Role
@@ -474,6 +520,14 @@ Resources:
                 - codebuild:StartBuild
               Resource: "*"
               Effect: Allow
+            - Action:
+                - kms:DescribeKey
+                - kms:GenerateDataKey*
+                - kms:Encrypt
+                - kms:ReEncrypt*
+                - kms:Decrypt
+              Resource: !GetAtt CodePipelineKey.Arn
+              Effect: Allow
 
   # ==================================================
   # ======== PARAMETER STORE SECRET FUNCTION =========
@@ -484,7 +538,7 @@ Resources:
     Properties:
       Handler: index.handler
       Role: !GetAtt ParameterStoreFunctionRole.Arn
-      Runtime: nodejs6.10
+      Runtime: nodejs8.10
       Timeout: 60
       Tags:
         - Key: Name
@@ -678,7 +732,7 @@ Resources:
           };
       Handler: index.handler
       Role: !GetAtt ErrorEmailerFunctionRole.Arn
-      Runtime: nodejs6.10
+      Runtime: nodejs8.10
       Timeout: 10
 
   ErrorEmailerFunctionRole:
@@ -761,22 +815,40 @@ Resources:
                   NUM_PACKAGES_REQUIRE_RESTART=\$(printf "\$PACKAGES_REQUIRE_RESTART" | wc -l)
                   printf "Reboot-required packages:\n \$PACKAGES_REQUIRE_RESTART \n"
                   
+                  CURRENT_NODE_VERSION=\$(node --version | cut -d v -f2)
+                  echo "\$CURRENT_NODE_VERSION" > /tmp/CURRENT_NODE_VERSION
+                  LATEST_LTS_NODE_VERSION=\$(n --lts)
+                  echo "\$LATEST_LTS_NODE_VERSION" > /tmp/LATEST_LTS_NODE_VERSION
+                  printf "Current Vs Latest LTS Node Version:\n \$CURRENT_NODE_VERSION vs \$LATEST_LTS_NODE_VERSION \n"
+                  
                   printf "Publishing to CloudWatch\n"
                                     
                   aws cloudwatch put-metric-data --metric-name "Last Upgrade Check Seconds" --namespace CVPN/Shared --unit Seconds --value \$SECONDS_SINCE_LAST_UPGRADE_CHECK --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
                   aws cloudwatch put-metric-data --metric-name "# Security Packages Upgradable" --namespace CVPN/Shared --unit Count --value \$NUM_UPGRADABLE_SECURITY_PACKAGES --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
                 	aws cloudwatch put-metric-data --metric-name "# Packages Require Restart" --namespace CVPN/Shared --unit Count --value \$NUM_PACKAGES_REQUIRE_RESTART --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
+                  if [ "\$CURRENT_NODE_VERSION" != "\$LATEST_LTS_NODE_VERSION" ];
+                  then
+                  	aws cloudwatch put-metric-data --metric-name "NodeJS Outdated" --namespace CVPN/Shared --unit Count --value 1 --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
+                  else
+                  	aws cloudwatch put-metric-data --metric-name "NodeJS Outdated" --namespace CVPN/Shared --unit Count --value 0 --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
+                  fi
                   
                   if [ \$AUTOSCALING_GROUP_NAME != 'null' ];
                   then 
                     aws cloudwatch put-metric-data --metric-name "Last Upgrade Check Seconds" --namespace CVPN/Shared --unit Seconds --value \$SECONDS_SINCE_LAST_UPGRADE_CHECK --dimensions Environment=${Environment},AutoScalingGroupName=\$AUTOSCALING_GROUP_NAME
                     aws cloudwatch put-metric-data --metric-name "# Security Packages Upgradable" --namespace CVPN/Shared --unit Count --value \$NUM_UPGRADABLE_SECURITY_PACKAGES --dimensions Environment=${Environment},AutoScalingGroupName=\$AUTOSCALING_GROUP_NAME
                   	aws cloudwatch put-metric-data --metric-name "# Packages Require Restart" --namespace CVPN/Shared --unit Count --value \$NUM_PACKAGES_REQUIRE_RESTART --dimensions Environment=${Environment},AutoScalingGroupName=\$AUTOSCALING_GROUP_NAME
+                    if [ "\$CURRENT_NODE_VERSION" != "\$LATEST_LTS_NODE_VERSION" ];
+                    then
+                    	aws cloudwatch put-metric-data --metric-name "NodeJS Outdated" --namespace CVPN/Shared --unit Count --value 1 --dimensions Environment=${Environment},AutoScalingGroupName=\$AUTOSCALING_GROUP_NAME
+                    else
+                    	aws cloudwatch put-metric-data --metric-name "NodeJS Outdated" --namespace CVPN/Shared --unit Count --value 0 --dimensions Environment=${Environment},AutoScalingGroupName=\$AUTOSCALING_GROUP_NAME
+                    fi
                   fi
                 EOT
                 chmod +x /home/ubuntu/os_updates_status.sh
                 chown ubuntu:ubuntu /home/ubuntu/os_updates_status.sh
-                echo "* */4 * * * root /home/ubuntu/os_updates_status.sh 2>&1 | /usr/bin/logger -t os_updates_status" > /etc/cron.d/os_updates_status
+                echo "0 */4 * * * root /home/ubuntu/os_updates_status.sh 2>&1 | /usr/bin/logger -t os_updates_status" > /etc/cron.d/os_updates_status
                 echo "@reboot root /home/ubuntu/os_updates_status.sh 2>&1 | /usr/bin/logger -t os_updates_status" >> /etc/cron.d/os_updates_status
                 chmod 0644 /etc/cron.d/os_updates_status
                 cd /home/ubuntu
@@ -837,6 +909,10 @@ Outputs:
     Value: !GetAtt ErrorEmailerFunction.Arn
     Export:
       Name: !Join [ '-', [ !Ref Environment, ErrorEmailerFunctionArn ] ]
+  CodePipelineKeyId:
+    Value: !Ref CodePipelineKey
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, CodePipelineKeyId ] ]
   CodeBuildRoleArn:
     Value: !GetAtt CodeBuildRole.Arn
     Export:

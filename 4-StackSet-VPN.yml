@@ -361,7 +361,7 @@ Resources:
       Environment:
         ComputeType: BUILD_GENERAL1_SMALL
         Type: LINUX_CONTAINER
-        Image: aws/codebuild/nodejs:6.3.1
+        Image: aws/codebuild/nodejs:10.14.1
       Source:
         Type: CODEPIPELINE
       TimeoutInMinutes: 15
@@ -376,6 +376,11 @@ Resources:
       - BandwidthCodeBuildProject
     Properties:
       ArtifactStore:
+        EncryptionKey:
+          Id:
+            Fn::ImportValue:
+              !Join [ '-', [ !Ref Environment, CodePipelineKeyId ] ]
+          Type: KMS
         Location:
           Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, ArtifactBucket ] ]
@@ -444,6 +449,12 @@ Resources:
       Ec2TagFilters: 
         - Key: Name
           Value: !Join [ '-', [ !Ref Environment, VPN ] ]
+          Type: KEY_AND_VALUE
+        - Key: Name
+          Value: !Join [ '-', [ !Ref Environment, VPN-IKEv2 ] ]
+          Type: KEY_AND_VALUE
+        - Key: Name
+          Value: !Join [ '-', [ !Ref Environment, VPN-OpenVPN ] ]
           Type: KEY_AND_VALUE
       ServiceRoleArn: 
         Fn::ImportValue:

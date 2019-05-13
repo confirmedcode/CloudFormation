@@ -401,6 +401,11 @@ Resources:
                             "file_path": "/var/run/reboot-required.pkgs",
                             "log_group_name": "${Environment}-VPN",
                             "log_stream_name": "${AWS::StackName}-{instance_id}-reboot-required"
+                          },
+                          {
+                            "file_path": "/tmp/CURRENT_NODE_VERSION",
+                            "log_group_name": "${Environment}-Admin",
+                            "log_stream_name": "${AWS::StackName}-{instance_id}-current-node-version"
                           }
                         ]
                       }
@@ -543,9 +548,13 @@ Resources:
         install-node:
           commands:
             1_setup:
-              command: curl -sL https://deb.nodesource.com/setup_6.x | bash -
+              command: curl -sL https://deb.nodesource.com/setup_10.x | bash -
             2_install:
               command: apt-get install -yq nodejs
+            3_update_npm:
+              command: npm install -g npm
+            4_install_n:
+              command: npm install -g n
         install-suricata:
           files:
             '/etc/default/suricata':
@@ -1440,6 +1449,31 @@ Resources:
       Threshold: '1'
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: ignore
+      Dimensions:
+      - Name: Environment
+        Value: !Ref Environment
+      - Name: InstanceId
+        Value: !Ref VpnInstance
+  
+  NodeUpdateCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - VpnInstance
+      - RestartCheckAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | VPN Node Update Check
+      MetricName: "NodeJS Outdated"
+      Namespace: CVPN/Shared
+      Statistic: Minimum
+      Period: '43200'
+      EvaluationPeriods: '1'
+      Threshold: '1'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
       Dimensions:
       - Name: Environment
         Value: !Ref Environment

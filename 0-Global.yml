@@ -237,7 +237,7 @@ Resources:
           };
       Handler: index.handler
       Role: !GetAtt CloudTrailEmailerFunctionRole.Arn
-      Runtime: nodejs6.10
+      Runtime: nodejs8.10
       Timeout: 10
 
   CloudTrailEmailerCloudWatchPermission:
@@ -400,14 +400,21 @@ Resources:
                   - arn:aws:s3:::${CloudTrailBucket}
                   - CloudTrailBucket: !Ref CloudTrailBucket
                 - arn:aws:s3:::stackset-*
+                - arn:aws:s3:::shared-adminauditbucket-*
+                - arn:aws:s3:::shared-artifactbucket-*
             - Effect: Allow
               Action:
+                - kms:Decrypt
                 - s3:GetObject
               Resource:
                 - !Sub
                   - arn:aws:s3:::${CloudTrailBucket}/*
                   - CloudTrailBucket: !Ref CloudTrailBucket
                 - arn:aws:s3:::stackset-*/*
+                - arn:aws:s3:::shared-adminauditbucket-*
+                - arn:aws:s3:::shared-artifactbucket-*
+                - arn:aws:s3:::shared-adminauditbucket-*/*
+                - arn:aws:s3:::shared-artifactbucket-*/*
         - PolicyName: AuditReadOnly
           PolicyDocument:
             Version: 2012-10-17
