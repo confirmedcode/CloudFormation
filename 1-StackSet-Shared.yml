@@ -815,6 +815,8 @@ Resources:
                   NUM_PACKAGES_REQUIRE_RESTART=\$(printf "\$PACKAGES_REQUIRE_RESTART" | wc -l)
                   printf "Reboot-required packages:\n \$PACKAGES_REQUIRE_RESTART \n"
                   
+                  which node
+                  node --version
                   CURRENT_NODE_VERSION=\$(node --version | cut -d v -f2)
                   echo "\$CURRENT_NODE_VERSION" > /tmp/CURRENT_NODE_VERSION
                   LATEST_LTS_NODE_VERSION=\$(n --lts)
