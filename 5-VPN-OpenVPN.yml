@@ -1473,7 +1473,7 @@ Resources:
       EvaluationPeriods: '1'
       Threshold: '1'
       ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: breaching
+      TreatMissingData: ignore
       Dimensions:
       - Name: Environment
         Value: !Ref Environment
