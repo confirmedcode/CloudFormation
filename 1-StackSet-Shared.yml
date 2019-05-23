@@ -114,13 +114,13 @@ Resources:
             - ssm:UpdateInstanceAssociationStatus
             - ssm:UpdateInstanceInformation
           Resource: "*"
-        - Effect: Allow
-          Action:
-            - ssmmessages:CreateControlChannel
-            - ssmmessages:CreateDataChannel
-            - ssmmessages:OpenControlChannel
-            - ssmmessages:OpenDataChannel
-          Resource: "*"
+        # - Effect: Allow # Don't Allow Session Manager
+        #   Action:
+        #     - ssmmessages:CreateControlChannel
+        #     - ssmmessages:CreateDataChannel
+        #     - ssmmessages:OpenControlChannel
+        #     - ssmmessages:OpenDataChannel
+        #   Resource: "*"
         - Effect: Allow
           Action:
             - ec2messages:AcknowledgeMessage
