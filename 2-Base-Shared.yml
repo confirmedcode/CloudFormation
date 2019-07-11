@@ -1813,7 +1813,7 @@ Resources:
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       EnablePerformanceInsights: !Ref DatabasePerformanceInsights
       Engine: postgres
-      EngineVersion: 10.6
+      EngineVersion: 10.9
       LicenseModel: postgresql-license
       MasterUsername: master
       MasterUserPassword: !GetAtt DatabaseAdminPasswordParameter.Value
@@ -1959,7 +1959,7 @@ Resources:
       PreferredMaintenanceWindow: wed:08:43-wed:09:13
       DBName: master
       Engine: postgres
-      EngineVersion: 10.4
+      EngineVersion: 10.9
       LicenseModel: postgresql-license
       MultiAZ: true
       DBSubnetGroupName: !Ref TestDatabaseSubnetGroup
