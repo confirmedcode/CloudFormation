@@ -146,7 +146,7 @@ Resources:
         GroupSet:
         - Fn::ImportValue:
               !Join [ '-', [ !Ref Environment, VpnSecurityGroupId ] ]
-      Monitoring: true
+      Monitoring: false
       Tags:
       - Key: Name
         Value: !Join [ '-', [ !Ref Environment, VPN-IKEv2 ] ]
