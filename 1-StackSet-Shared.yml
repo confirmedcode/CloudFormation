@@ -538,14 +538,14 @@ Resources:
     Properties:
       Handler: index.handler
       Role: !GetAtt ParameterStoreFunctionRole.Arn
-      Runtime: nodejs8.10
+      Runtime: nodejs10.x
       Timeout: 60
       Tags:
         - Key: Name
           Value: !Ref Environment
       Code:
         ZipFile: >
-          var response = require('cfn-response');
+          var response = require('./cfn-response');
           var aws = require('aws-sdk');
           var crypto = require('crypto');
           
@@ -732,7 +732,7 @@ Resources:
           };
       Handler: index.handler
       Role: !GetAtt ErrorEmailerFunctionRole.Arn
-      Runtime: nodejs8.10
+      Runtime: nodejs10.x
       Timeout: 10
 
   ErrorEmailerFunctionRole:
