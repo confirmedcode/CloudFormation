@@ -324,6 +324,12 @@ Resources:
     Properties:
       DisableApiTermination: false
       InstanceInitiatedShutdownBehavior: stop
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 40
+            VolumeType: gp2
       CreditSpecification:
         CPUCredits: unlimited
       IamInstanceProfile: !Ref RenewerInstanceProfile

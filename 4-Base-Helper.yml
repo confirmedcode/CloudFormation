@@ -110,6 +110,12 @@ Resources:
       ImageId: !If [OverrideAMI, !Ref UbuntuAMI, !FindInMap [RegionMap, !Ref "AWS::Region", AMI]]
       InstanceType: !Ref InstanceType
       EbsOptimized: true
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 30
+            VolumeType: gp2
       Monitoring: true
       Tags:
       - Key: Name

@@ -165,11 +165,13 @@ Resources:
           Action:
             - s3:Get*
             - s3:List*
+            - kms:Decrypt
           Resource:
             - !Sub arn:aws:s3:::aws-ssm-${AWS::Region}/*
             - !Sub arn:aws:s3:::${AWS::Region}-birdwatcher-prod/*
             - !Join [ '', [ !GetAtt ArtifactBucket.Arn, "/*"] ] 
             - !Sub arn:aws:s3:::aws-codedeploy-${AWS::Region}/*
+            - !GetAtt CodePipelineKey.Arn
         - Effect: Allow
           Action:
             - autoscaling:DescribeAutoScalingInstances
