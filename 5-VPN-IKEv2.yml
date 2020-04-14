@@ -1577,7 +1577,7 @@ Resources:
             - Fn::ImportValue: !Sub ${Environment}-Domain
       Type: A
       TTL: 600
-      Weight: 10
+      Weight: 0
       SetIdentifier: !Ref "AWS::StackName"
 
 Outputs:

@@ -94,6 +94,20 @@ Mappings:
 
 Resources:
 
+  AllowedIpParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "ADMIN", "ALLOWED_IP" ] ]
+      Type: String
+      Value: !Ref AllowedIp
+
+  TestAllowedIpParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "ADMIN", "ALLOWED_IP" ] ]
+      Type: String
+      Value: 192.168.0.0/32
+
   # ==================================================
   # ============= Instance Role ======================
   # ==================================================

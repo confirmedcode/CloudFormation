@@ -825,7 +825,8 @@ Resources:
                   fi
                   
                   echo "\$CURRENT_NODE_VERSION" > /tmp/CURRENT_NODE_VERSION
-                  LATEST_LTS_NODE_VERSION=\$(n --lts)
+                  NEXT_MAJOR_VERSION=11
+                  LATEST_LTS_NODE_VERSION=\$(npm show node@">=\$CURRENT_NODE_VERSION <\$NEXT_MAJOR_VERSION" version)
                   echo "\$LATEST_LTS_NODE_VERSION" > /tmp/LATEST_LTS_NODE_VERSION
                   printf "Current Vs Latest LTS Node Version:\n \$CURRENT_NODE_VERSION vs \$LATEST_LTS_NODE_VERSION \n"
                   
