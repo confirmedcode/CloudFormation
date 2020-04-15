@@ -1,0 +1,1220 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Main For Lockdown Site
+
+Parameters:
+  
+  Environment:
+    Type: String
+    Description: Name of the environment
+
+  # Optional
+  UbuntuAMI:
+    Type: String
+    Description: AMI
+    Default: ""
+  
+  InstanceType:
+    Type: String
+    Description: Instance Type
+    Default: t3.micro
+
+Conditions: 
+  
+  OverrideAMI: !Not [!Equals [!Ref UbuntuAMI, ""]]
+
+Mappings: 
+  
+  RegionMap: 
+    us-east-1: 
+      AMI: ami-0735ea082a1534cac
+      InstanceType: t3.small
+      EbsOptimized: true
+    us-east-2:
+      AMI: ami-04c305e118636bc7d
+      InstanceType: t3.small
+      EbsOptimized: true
+    us-west-1: 
+      AMI: ami-0f5113ce7686689e9
+      InstanceType: t3.small
+      EbsOptimized: true
+    us-west-2: 
+      AMI: ami-01e0cf6e025c036e4
+      InstanceType: t3.small
+      EbsOptimized: true
+    ap-south-1:
+      AMI: ami-0c6c52d7cf1004825
+      InstanceType: t2.small
+      EbsOptimized: false
+    ap-northeast-2:
+      AMI: ami-0035936492be04cff
+      InstanceType: t2.small
+      EbsOptimized: false
+    ap-southeast-1:
+      AMI: ami-0d97809b54a5f01ba
+      InstanceType: t3.small
+      EbsOptimized: true
+    ap-southeast-2:
+      AMI: ami-05162512c82cb460f
+      InstanceType: t2.small
+      EbsOptimized: false
+    ap-northeast-1:
+      AMI: ami-06317ca3b39714f7e
+      InstanceType: t3.small
+      EbsOptimized: true
+    ca-central-1:
+      AMI: ami-0a5443ed7b0a45901
+      InstanceType: t3.small
+      EbsOptimized: true
+    eu-central-1:
+      AMI: ami-0dd0be70cc0d493b7
+      InstanceType: t3.small
+      EbsOptimized: true
+    eu-west-1:
+      AMI: ami-00b36349b3dba2ec3
+      InstanceType: t3.small
+      EbsOptimized: true
+    eu-west-2:
+      AMI: ami-06f77073d7dc4c48a
+      InstanceType: t3.small
+      EbsOptimized: true
+    eu-west-3:
+      AMI: ami-0b26151106502588d
+      InstanceType: t2.small
+      EbsOptimized: false
+    sa-east-1:
+      AMI: ami-0f7c76bfc85e5b4ea
+      InstanceType: t2.small
+      EbsOptimized: false
+  
+Resources:
+      
+  # ==================================================
+  # =================== SECURITY GROUPS ==============
+  # ==================================================
+  
+  MainSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, VPCId ] ]
+      GroupDescription: HTTP (Load Balancer)
+      Tags:
+        - Key: Name
+          Value: LD-Main
+        - Key: Environment
+          Value: !Ref Environment
+  
+  MainLoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, VPCId ] ]
+      GroupDescription: HTTPS In
+      Tags:
+        - Key: Name
+          Value: LD-MainLoadBalancer
+        - Key: Environment
+          Value: !Ref Environment
+  
+  MainLoadBalancerMainSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      Description: Allow HTTP from LD Main Load Balancer to LD Main
+      SourceSecurityGroupId: !Ref MainLoadBalancerSecurityGroup
+      GroupId: !Ref MainSecurityGroup
+          
+  ExternalIPv4HTTPToMainLoadBalancerSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      Description: Allow HTTP (will be redirected to https) from external IPv4 to LD Main Load Balancer
+      CidrIp: 0.0.0.0/0
+      GroupId: !Ref MainLoadBalancerSecurityGroup
+  
+  ExternalIPv6HTTPToMainLoadBalancerSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      Description: Allow HTTP (will be redirected to https) from external IPv6 to LD Main Load Balancer
+      CidrIpv6: ::/0
+      GroupId: !Ref MainLoadBalancerSecurityGroup
+  
+  ExternalIPv4ToMainLoadBalancerSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      Description: Allow HTTPS from external IPv4 to Main Load Balancer
+      CidrIp: 0.0.0.0/0
+      GroupId: !Ref MainLoadBalancerSecurityGroup
+  
+  ExternalIPv6ToMainLoadBalancerSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      Description: Allow HTTPS from external IPv6 to Main Load Balancer
+      CidrIpv6: ::/0
+      GroupId: !Ref MainLoadBalancerSecurityGroup
+      
+  # ==================================================
+  # ================== CODEPIPELINE ==================
+  # ==================================================
+
+  MainCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Join [ '-', [ !Ref Environment, LD-Main ] ]
+      ServiceRole: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, CodeBuildRoleArn ] ]
+      Artifacts:
+        Type: CODEPIPELINE
+      BadgeEnabled: false
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables:
+          - Name: ENVIRONMENT
+            Type: PLAINTEXT
+            Value: !Ref Environment
+          - Name: AWS_REGION
+            Type: PLAINTEXT
+            Value: !Ref AWS::Region
+          - Name: GIT_BRANCH
+            Type: PLAINTEXT
+            Value:
+              Fn::ImportValue:
+                !Join [ '-', [ !Ref Environment, GitBranch ] ]
+        Type: LINUX_CONTAINER
+        Image: aws/codebuild/nodejs:10.14.1
+      Source:
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 15
+      VpcConfig:
+        SecurityGroupIds: 
+          - Fn::ImportValue:
+              !Join [ '-', [ !Ref Environment, TestCodeBuildSecurityGroupId ] ]
+        Subnets: 
+          - Fn::ImportValue:
+              !Join [ '-', [ !Ref Environment, TestPrivateSubnet ] ]
+          - Fn::ImportValue:
+              !Join [ '-', [ !Ref Environment, TestPrivateSubnet2 ] ]
+        VpcId:
+          Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, TestVPCId ] ]
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+  
+  MainCodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn:
+      - MainDeploymentGroup
+      - MainCodeBuildProject
+      - MainLaunchConfiguration
+    Properties:
+      ArtifactStore:
+        EncryptionKey:
+          Id:
+            Fn::ImportValue:
+              !Join [ '-', [ !Ref Environment, CodePipelineKeyId ] ]
+          Type: KMS
+        Location:
+          Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, ArtifactBucket ] ]
+        Type: S3
+      Name: !Join [ '-', [ !Ref Environment, LD-Main ] ]
+      RoleArn: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, CodePipelineRoleArn ] ]
+      Stages:
+        - Name: CodeCommit
+          Actions:
+            - Name: MainCodeCommit
+              RunOrder: 1
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: 1
+              Configuration:
+                RepositoryName: !Sub ${Environment}-LD-Main
+                BranchName:
+                  Fn::ImportValue:
+                    !Join [ '-', [ !Ref Environment, GitBranch ] ]
+              OutputArtifacts:
+                - Name: CodeCommitArtifact
+        - Name: CodeBuild
+          Actions:
+            - Name: MainCodeBuild
+              RunOrder: 2
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: !Ref MainCodeBuildProject
+              InputArtifacts:
+                - Name: CodeCommitArtifact
+              OutputArtifacts:
+                - Name: CodeBuildArtifact
+        - Name: CodeDeploy
+          Actions:
+            - Name: MainCodeDeploy
+              RunOrder: 3
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CodeDeploy
+                Version: 1
+              Configuration:
+                ApplicationName: !Ref MainApplication
+                DeploymentGroupName: !Ref MainDeploymentGroup
+              InputArtifacts:
+                - Name: CodeBuildArtifact
+  
+  MainApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Join [ '-', [ !Ref Environment, LD-Main ] ]
+
+  MainDeploymentGroup: 
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties: 
+      ApplicationName: !Ref MainApplication
+      AutoScalingGroups:
+        - !Ref MainAutoScalingGroup
+      DeploymentConfigName: CodeDeployDefault.OneAtATime
+      DeploymentStyle:
+        DeploymentOption: WITH_TRAFFIC_CONTROL
+        DeploymentType: IN_PLACE
+      LoadBalancerInfo:
+        TargetGroupInfoList:
+          - Name: !GetAtt MainTargetGroup.TargetGroupName
+      ServiceRoleArn: 
+        Fn::ImportValue:
+           !Join [ '-', [ !Ref Environment, CodeDeployRoleArn ] ]
+
+  # ==================================================
+  # ============= Instance Role ======================
+  # ==================================================
+             
+  MainRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+          - Fn::ImportValue:
+              !Join [ '-', [ !Ref Environment, SSMManagedPolicy ] ]
+      Policies:
+        - PolicyName: !Sub ${Environment}-LD-Main
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParametersByPath
+              Resource:
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/COMMON
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/MAIN
+            - Effect: Allow
+              Action:
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource:
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-LD-Main
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-LD-Main:log-stream:*
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-LD-Main-Node
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${Environment}-LD-Main-Node:log-stream:*
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+              Resource: "*"
+
+  MainInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref MainRole
+  
+  # ==================================================
+  # ====================== Main ======================
+  # ==================================================
+  
+  MainLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      #LoadBalancerAttributes: # prod only
+      #  - Key: deletion_protection.enabled
+      #    Value: true
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref MainLoadBalancerSecurityGroup
+      Subnets:
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, SubnetId ] ]
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, Subnet2Id ] ]
+      Tags:
+        - Key: Name
+          Value: LD-MainLoadBalancer
+        - Key: Environment
+          Value: !Ref Environment
+      Type: application
+      IpAddressType: ipv4
+  
+  MainWwwDNSRecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties: 
+      AliasTarget: 
+        DNSName: !GetAtt MainLoadBalancer.DNSName
+        EvaluateTargetHealth: false
+        HostedZoneId: !GetAtt MainLoadBalancer.CanonicalHostedZoneID
+      Comment: !Join [ '-', [ !Ref Environment, MainLoadBalancer ] ]
+      HostedZoneName: !Sub
+                        - ${LDDomain}.
+                        - LDDomain: 
+                            Fn::ImportValue: !Sub ${Environment}-LD-Domain
+      Name: !Sub
+              - www.${LDDomain}
+              - LDDomain: 
+                  Fn::ImportValue: !Sub ${Environment}-LD-Domain
+      Type: A
+  
+  MainNakedDNSRecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt MainLoadBalancer.DNSName
+        EvaluateTargetHealth: false
+        HostedZoneId: !GetAtt MainLoadBalancer.CanonicalHostedZoneID
+      Comment: !Join [ '-', [ !Ref Environment, MainLoadBalancer ] ]
+      HostedZoneName: !Sub
+                        - ${LDDomain}.
+                        - LDDomain: 
+                            Fn::ImportValue: !Sub ${Environment}-LD-Domain
+      Name: !Sub
+              - ${LDDomain}
+              - LDDomain: 
+                  Fn::ImportValue: !Sub ${Environment}-LD-Domain
+      Type: A
+      
+  MainTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /health
+      HealthCheckPort: traffic-port
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 3
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Matcher:
+        HttpCode: 200
+      Name: !Join [ '-', [ !Ref Environment, LD-Main ] ]
+      Port: 80
+      Protocol: HTTP
+      Tags:
+        - Key: Name
+          Value: MainTargetGroup
+        - Key: Environment
+          Value: !Ref Environment
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 300
+        - Key: stickiness.enabled
+          Value: false
+      VpcId:
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, VPCId ] ]
+  
+  MainLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      Certificates:
+        - CertificateArn: 
+            Fn::ImportValue: !Sub ${Environment}-LD-DomainCertificate
+      DefaultActions:
+        - TargetGroupArn: !Ref MainTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref MainLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS-1-2-Ext-2018-06
+
+  MainLoadBalancerHttpRedirectListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Port: 443
+            Protocol: HTTPS
+            StatusCode: HTTP_301
+      LoadBalancerArn: !Ref MainLoadBalancer
+      Port: 80
+      Protocol: HTTP
+          
+  MainAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    CreationPolicy:
+      AutoScalingCreationPolicy:
+        MinSuccessfulInstancesPercent: 100
+      ResourceSignal:
+        Count: 1
+        Timeout: PT20M
+    UpdatePolicy:
+      AutoScalingReplacingUpdate:
+        WillReplace: true
+    Properties:
+      VPCZoneIdentifier:
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, SubnetId ] ]
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, Subnet2Id ] ]
+      Cooldown: 300
+      DesiredCapacity: 2
+      MinSize: 1
+      MaxSize: 2
+      HealthCheckGracePeriod: 300
+      HealthCheckType: EC2
+      TerminationPolicies:
+        - OldestInstance
+      LaunchConfigurationName: !Ref MainLaunchConfiguration
+      Tags:
+        - Key: Name
+          Value: !Join [ '-', [ !Ref Environment, LD-Main ] ]
+          PropagateAtLaunch: true
+        - Key: Environment
+          Value: !Ref Environment
+          PropagateAtLaunch: true
+      TargetGroupARNs:
+        - !Ref MainTargetGroup
+          
+  MainLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      AssociatePublicIpAddress: true
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 8
+            VolumeType: gp2
+      EbsOptimized: true
+      IamInstanceProfile: !Ref MainInstanceProfile
+      ImageId: !If [OverrideAMI, !Ref UbuntuAMI, !FindInMap [RegionMap, !Ref "AWS::Region", AMI]]
+      InstanceMonitoring: true
+      InstanceType: !Ref InstanceType
+      SecurityGroups:
+        - !Ref MainSecurityGroup
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash -ex
+            # Install Updates and Python SetupTools (for easy_install)
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update && apt-get dist-upgrade -yq
+            apt-get -yq install python-setuptools
+            # Install CloudFormation Bootstrap
+            easy_install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz
+            ln -s /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup /etc/init.d/cfn-hup
+            chmod +x /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup
+            update-rc.d cfn-hup defaults
+            # Run CloudFormation In
+            cfn-init -c default --stack ${AWS::StackName} --resource MainLaunchConfiguration --region ${AWS::Region}
+            # Signal success to CloudFormation on reboot
+            echo "@reboot root /usr/local/bin/cfn-signal --success true --stack ${AWS::StackName} --resource MainAutoScalingGroup --region ${AWS::Region} 2>&1 | /usr/bin/logger -t cfn_success" >> /etc/cron.d/success_on_reboot            
+            echo "@reboot root /home/ubuntu/install-codedeploy.sh 2>&1 | /usr/bin/logger -t install_codedeploy_script" >> /etc/cron.d/install_codedeploy_on_reboot
+            # Reboot to pick up latest patches
+            reboot
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets: 
+          default:
+            - "unattended-upgrades"
+            - "enable-swap"
+            - "install-pip-and-curl-and-ruby"
+            - "set-region-and-environment"
+            - "install-aws-cloudwatch-and-cli"
+            - "setup-cfn-hup"
+            - "install-node"
+            - "forward-node-port-on-reboot"
+            - "install-pm2"
+            - "install-codedeploy"
+          updateable:
+            - "update-nothing"
+        unattended-upgrades:
+          files:
+            '/etc/apt/apt.conf.d/10periodic':
+              content: |
+                APT::Periodic::Update-Package-Lists "1";
+                APT::Periodic::Download-Upgradeable-Packages "1";
+                APT::Periodic::AutocleanInterval "7";
+                APT::Periodic::Unattended-Upgrade "1";
+              mode: '000644'
+              owner: root
+              group: root
+            '/etc/apt/apt.conf.d/50unattended-upgrades':
+              content: |
+                Unattended-Upgrade::Allowed-Origins {
+                  "${distro_id}:${distro_codename}";
+                  "${distro_id}:${distro_codename}-security";
+                  "${distro_id}ESM:${distro_codename}";
+                };
+              mode: '000644'
+              owner: root
+              group: root
+        enable-swap:
+          commands:
+            0_enable_swap:
+              command: |
+                dd if=/dev/zero of=/var/spool/swap bs=1M count=1k
+                mkswap /var/spool/swap
+                chmod 0600 /var/spool/swap
+                swapon /var/spool/swap
+            1_persist_on_reboot:
+              command: |
+                echo "/var/spool/swap swap swap defaults 0 0" >> /etc/fstab
+        update-nothing:
+          commands:
+            0_do_nothing:
+              command: echo "Nothing to Update for Cfn"
+        forward-node-port-on-reboot:
+          commands:
+            0_forward:
+              command: |
+                ETHDEVICE=$(ifconfig -s | grep BMRU | head -n 1 | cut -d" " -f1)
+                echo "@reboot root /sbin/iptables -A PREROUTING -t nat -i $ETHDEVICE -p tcp --dport 80 -j REDIRECT --to-port 3000 2>&1 | /usr/bin/logger -t forward_node_port_on_reboot" > /etc/cron.d/forward_node_port_on_reboot
+                chmod 0644 /etc/cron.d/forward_node_port_on_reboot
+                iptables -A PREROUTING -t nat -i $ETHDEVICE -p tcp --dport 80 -j REDIRECT --to-port 3000
+        install-pip-and-curl-and-ruby:
+          packages:
+            apt:
+              curl: []
+              python-pip: []
+              ruby: []
+        set-region-and-environment:
+          commands:
+            0_set_environment:
+              command: !Sub echo ENVIRONMENT=${Environment} >> /etc/environment
+            1_set_region:
+              command: !Sub echo AWS_DEFAULT_REGION=${AWS::Region} >> /etc/environment
+            2_set_region_node:
+              command: !Sub echo AWS_REGION=${AWS::Region} >> /etc/environment
+            3_set_git_branch:
+              command: !Sub
+                - echo GIT_BRANCH=${Branch} >> /etc/environment
+                - Branch: 
+                    Fn::ImportValue:
+                      !Join [ '-', [ !Ref Environment, GitBranch ] ]
+        install-aws-cloudwatch-and-cli:
+          packages:
+            apt:
+              awscli: []
+          files:
+            '/home/ubuntu/cloudwatch.config':
+              content: !Sub |
+                {
+                  "logs": {
+                    "logs_collected": {
+                      "files": {
+                        "collect_list": [
+                          {
+                            "file_path": "/home/node/logs/app.log",
+                            "log_group_name": "${Environment}-LD-Main-Node",
+                            "log_stream_name": "{instance_id}-node-log"
+                          },
+                          {
+                            "file_path": "/var/log/cloud-init.log",
+                            "log_group_name": "${Environment}-LD-Main-Node",
+                            "log_stream_name": "{instance_id}-cloud-init-placeholder"
+                          },
+                          {
+                            "file_path": "/var/log/syslog",
+                            "log_group_name": "${Environment}-LD-Main",
+                            "log_stream_name": "{instance_id}-syslog"
+                          },
+                          {
+                            "file_path": "/var/log/cloud-init.log",
+                            "log_group_name": "${Environment}-LD-Main",
+                            "log_stream_name": "{instance_id}-cloud-init"
+                          },
+                          {
+                            "file_path": "/var/log/cloud-init-output.log",
+                            "log_group_name": "${Environment}-LD-Main",
+                            "log_stream_name": "{instance_id}-cloud-init-output"
+                          },
+                          {
+                            "file_path": "/var/log/cfn-init.log",
+                            "log_group_name": "${Environment}-LD-Main",
+                            "log_stream_name": "{instance_id}-cfn-init"
+                          },
+                          {
+                            "file_path": "/var/log/cfn-init-cmd.log",
+                            "log_group_name": "${Environment}-LD-Main",
+                            "log_stream_name": "{instance_id}-cfn-init-cmd"
+                          },
+                          {
+                            "file_path": "/var/log/cfn-hup.log",
+                            "log_group_name": "${Environment}-LD-Main",
+                            "log_stream_name": "{instance_id}-cfn-hup"
+                          },
+                          {
+                            "file_path": "/var/log/amazon/ssm/amazon-ssm-agent.log",
+                            "log_group_name": "${Environment}-LD-Main",
+                            "log_stream_name": "{instance_id}-aws-ssm"
+                          },
+                          {
+                            "file_path": "/var/log/aws/codedeploy-agent/codedeploy-agent.log",
+                            "log_group_name": "${Environment}-LD-Main",
+                            "log_stream_name": "{instance_id}-aws-codedeploy-agent"
+                          },
+                          {
+                            "file_path": "/opt/codedeploy-agent/deployment-root/deployment-logs/codedeploy-agent-deployments.log",
+                            "log_group_name": "${Environment}-LD-Main",
+                            "log_stream_name": "{instance_id}-aws-codedeploy-deployments"
+                          },
+                          {
+                            "file_path": "/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log",
+                            "log_group_name": "${Environment}-LD-Main",
+                            "log_stream_name": "{instance_id}-cloudwatch-logs"
+                          },
+                          {
+                            "file_path": "/var/log/unattended-upgrades/unattended-upgrades.log",
+                            "log_group_name": "${Environment}-LD-Main",
+                            "log_stream_name": "{instance_id}-unattended-upgrades"
+                          },
+                          {
+                            "file_path": "/var/log/unattended-upgrades/unattended-upgrades-dpkg.log",
+                            "log_group_name": "${Environment}-LD-Main",
+                            "log_stream_name": "{instance_id}-unattended-upgrades-dpkg"
+                          },
+                          {
+                            "file_path": "/var/run/reboot-required.pkgs",
+                            "log_group_name": "${Environment}-LD-Main",
+                            "log_stream_name": "{instance_id}-reboot-required"
+                          },
+                          {
+                            "file_path": "/tmp/CURRENT_NODE_VERSION",
+                            "log_group_name": "${Environment}-LD-Main",
+                            "log_stream_name": "{instance_id}-current-node-version"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "metrics": {
+                    "append_dimensions": {
+                      "InstanceId": "${!aws:InstanceId}",
+                      "AutoScalingGroupName": "${!aws:AutoScalingGroupName}"
+                    },
+                    "aggregation_dimensions": [["AutoScalingGroupName"]],
+                    "metrics_collected": {
+                      "cpu": {
+                        "measurement": [
+                          "cpu_usage_active",
+                          "cpu_usage_iowait",
+                          "cpu_usage_user",
+                          "cpu_usage_system"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "totalcpu": true
+                      },
+                      "disk": {
+                        "measurement": [
+                          "used_percent",
+                          "inodes_free"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "resources": [
+                          "/"
+                        ]
+                      },
+                      "diskio": {
+                        "measurement": [
+                          "io_time"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "resources": [
+                          "/"
+                        ]
+                      },
+                      "mem": {
+                        "measurement": [
+                          "mem_used_percent"
+                        ],
+                        "metrics_collection_interval": 60
+                      },
+                      "swap": {
+                        "measurement": [
+                          "swap_used_percent"
+                        ],
+                        "metrics_collection_interval": 60
+                      }
+                    }
+                  }
+                }
+              mode: '000644'
+              owner: root
+              group: root
+          commands:
+            0_install_cloudwatch:
+              command: |
+                apt-get -yq install unzip
+                wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/linux/amd64/latest/AmazonCloudWatchAgent.zip -P /tmp
+                unzip /tmp/AmazonCloudWatchAgent.zip -d /home/ubuntu/cloudwatch_agent
+                cd /home/ubuntu/cloudwatch_agent
+                ./install.sh
+                /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/home/ubuntu/cloudwatch.config -s
+        setup-cfn-hup:
+           files:
+             '/etc/cfn/cfn-hup.conf':
+               content: !Sub |
+                 [main]
+                 stack=${AWS::StackId}
+                 region=${AWS::Region}
+                 interval=1
+               mode: '000400'
+               owner: root
+               group: root
+             '/etc/cfn/hooks.d/cfn-auto-reloader.conf':
+               content: !Sub |
+                 [cfn-auto-reloader-hook]
+                 triggers=post.update
+                 path=Resources.MainLaunchConfiguration.Metadata.AWS::CloudFormation::Init
+                 action=cfn-init --verbose --stack=${AWS::StackName} --region=${AWS::Region} --resource=MainLaunchConfiguration --configsets updateable
+                 runas=root
+               mode: '000400'
+               owner: root
+               group: root
+           services:
+             sysvinit:
+               cfn-hup:
+                 enabled: true
+                 ensureRunning: true
+                 files:
+                 - '/etc/cfn/cfn-hup.conf'
+                 - '/etc/cfn/hooks.d/cfn-auto-reloader.conf'
+        install-node:
+          commands:
+            0_create_user:
+              command: |
+                      adduser \
+                        --system \
+                        --shell /bin/bash \
+                        --gecos 'Node user' \
+                        --group \
+                        --disabled-password \
+                        --home /home/node \
+                        node
+            1_setup:
+              command: curl -sL https://deb.nodesource.com/setup_10.x | bash -
+            2_install:
+              command: apt-get install -yq nodejs
+            3_update_npm:
+              command: npm install -g npm
+            4_install_n:
+              command: npm install -g n
+        install-pm2:
+          commands:
+            0_install:
+              command: npm install pm2 -g
+            1_restart_on_reboot:
+              command: env PATH=$PATH:/usr/local/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u node --hp /home/node
+        install-codedeploy:
+          files:
+            '/home/ubuntu/install-codedeploy.sh':
+              content: !Sub |
+                export PATH=$PATH:/usr/local/sbin:/usr/sbin:/sbin
+                wget -nv "https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install" -O /tmp/install
+                /bin/chmod +x /tmp/install && /tmp/install auto
+              mode: '000544'
+              owner: root
+              group: root
+
+  # ==================================================
+  # ============ APPLICATION ERROR ALERTS ============
+  # ==================================================
+  
+  MainNodeEmailerSubscriptionFilter:
+    Type: AWS::Logs::SubscriptionFilter
+    DependsOn:
+      - MainAutoScalingGroup
+    Properties: 
+      DestinationArn:
+        Fn::ImportValue:
+          !Join [ '-', [ !Ref Environment, ErrorEmailerFunctionArn ] ]
+      FilterPattern: '{ $.level = "error" && ( $.meta.error.code != "ECONNABORTED" || $.meta.error.code NOT EXISTS ) && ( $.meta.error.statusCode >= 500 || $.meta.error.statusCode NOT EXISTS ) }'
+      LogGroupName: !Join [ '-', [ !Ref Environment, LD-Main-Node ] ]
+  
+  404MetricFilter: 
+    Type: AWS::Logs::MetricFilter
+    DependsOn:
+      - MainAutoScalingGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, LD-Main-Node] ]
+      FilterPattern: "{ $.meta.res.statusCode = 404 }"
+      MetricTransformations: 
+        - 
+          MetricValue: "1"
+          MetricNamespace: !Join [ '-', [ !Ref Environment, LD-Main-Node, HttpErrors] ]
+          MetricName: "404Count"
+
+  401MetricFilter: 
+    Type: AWS::Logs::MetricFilter
+    DependsOn:
+      - MainAutoScalingGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, LD-Main-Node] ]
+      FilterPattern: "{ $.meta.error.statusCode = 401 }"
+      MetricTransformations: 
+        - 
+          MetricValue: "1"
+          MetricNamespace: !Join [ '-', [ !Ref Environment, LD-Main-Node, HttpErrors] ]
+          MetricName: "401Count"
+
+  4xxMetricFilter: 
+    Type: AWS::Logs::MetricFilter
+    DependsOn:
+      - MainAutoScalingGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, LD-Main-Node] ]
+      FilterPattern: "{ $.meta.error.statusCode >= 400 && $.meta.error.statusCode < 500 }"
+      MetricTransformations: 
+        - 
+          MetricValue: "1"
+          MetricNamespace: !Join [ '-', [ !Ref Environment, LD-Main-Node, HttpErrors] ]
+          MetricName: "4XXCount"
+  
+  5xxMetricFilter: 
+    Type: AWS::Logs::MetricFilter
+    DependsOn:
+      - MainAutoScalingGroup
+    Properties: 
+      LogGroupName: !Join [ '-', [ !Ref Environment, LD-Main-Node] ]
+      FilterPattern: "{ $.meta.error.statusCode >= 500 }"
+      MetricTransformations: 
+        - 
+          MetricValue: "1"
+          MetricNamespace: !Join [ '-', [ !Ref Environment, LD-Main-Node, HttpErrors] ]
+          MetricName: "5XXCount"
+
+  # ==================================================
+  # ================= CLOUDWATCH ALARMS ==============
+  # ==================================================
+    
+  MainTargetGroupUnhealthyHostAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - MainAutoScalingGroup
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | LD Main Unhealthy Host
+      MetricName: UnHealthyHostCount
+      Namespace: AWS/ApplicationELB
+      Statistic: Minimum
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '1'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: TargetGroup
+        Value: !GetAtt MainTargetGroup.TargetGroupFullName
+      - Name: LoadBalancer
+        Value: !GetAtt MainLoadBalancer.LoadBalancerFullName
+  
+  MainTargetGroupHealthyHostAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - MainAutoScalingGroup
+      - MainTargetGroupUnhealthyHostAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | LD Main Healthy Host
+      MetricName: HealthyHostCount
+      Namespace: AWS/ApplicationELB
+      Statistic: Maximum
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '1'
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: TargetGroup
+        Value: !GetAtt MainTargetGroup.TargetGroupFullName
+      - Name: LoadBalancer
+        Value: !GetAtt MainLoadBalancer.LoadBalancerFullName
+  
+  MainTargetGroupLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - MainAutoScalingGroup
+      - MainTargetGroupHealthyHostAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | LD Main Latency
+      MetricName: TargetResponseTime
+      Namespace: AWS/ApplicationELB
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '4'
+      Threshold: '2'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: ignore
+      Dimensions:
+      - Name: TargetGroup
+        Value: !GetAtt MainTargetGroup.TargetGroupFullName
+      - Name: LoadBalancer
+        Value: !GetAtt MainLoadBalancer.LoadBalancerFullName
+  
+  CpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - MainAutoScalingGroup
+      - MainTargetGroupLatencyAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | LD Main CPU
+      MetricName: "cpu_usage_active"
+      Namespace: CWAgent
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '60'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: AutoScalingGroupName
+        Value: !Ref MainAutoScalingGroup
+  
+  LowMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - MainAutoScalingGroup
+      - MainTargetGroupLatencyAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | LD Main Low Memory
+      MetricName: "mem_used_percent"
+      Namespace: CWAgent
+      Statistic: Maximum
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '80'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: AutoScalingGroupName
+        Value: !Ref MainAutoScalingGroup
+  
+  SwapUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - MainAutoScalingGroup
+      - LowMemoryAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | LD Main Swap Usage
+      MetricName: "swap_used_percent"
+      Namespace: CWAgent
+      Statistic: Maximum
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '15'
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: AutoScalingGroupName
+        Value: !Ref MainAutoScalingGroup
+  
+  DiskUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - MainAutoScalingGroup
+      - SwapUsageAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | LD Main Disk Usage
+      MetricName: "disk_used_percent"
+      Namespace: CWAgent
+      Statistic: Maximum
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '75'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: AutoScalingGroupName
+        Value: !Ref MainAutoScalingGroup
+        
+  UpgradeCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - MainAutoScalingGroup
+      - DiskUsageAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | LD Main Upgrade Check
+      MetricName: "Last Upgrade Check Seconds"
+      Namespace: LD/Shared
+      Statistic: Maximum
+      Period: '43200'
+      EvaluationPeriods: '1'
+      Threshold: '172800'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: Environment
+        Value: !Ref Environment
+      - Name: AutoScalingGroupName
+        Value: !Ref MainAutoScalingGroup
+
+  RestartCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - MainAutoScalingGroup
+      - UpgradeCheckAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | LD Main Restart Check
+      MetricName: "# Packages Require Restart"
+      Namespace: LD/Shared
+      Statistic: Minimum
+      Period: '43200'
+      EvaluationPeriods: '1'
+      Threshold: '1'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: Environment
+        Value: !Ref Environment
+      - Name: AutoScalingGroupName
+        Value: !Ref MainAutoScalingGroup
+
+  SecurityPackagesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - MainAutoScalingGroup
+      - RestartCheckAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions:
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | Main Security Packages Upgradable
+      MetricName: "# Security Packages Upgradable"
+      Namespace: LD/Shared
+      Statistic: Minimum
+      Period: '43200'
+      EvaluationPeriods: '2'
+      Threshold: '1'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: Environment
+        Value: !Ref Environment
+      - Name: AutoScalingGroupName
+        Value: !Ref MainAutoScalingGroup
+        
+  NodeUpdateCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - MainAutoScalingGroup
+      - SecurityPackagesAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmActions: 
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+      AlarmDescription: !Sub ${Environment} | Main Node Update Check
+      MetricName: "NodeJS Outdated"
+      Namespace: LD/Shared
+      Statistic: Minimum
+      Period: '43200'
+      EvaluationPeriods: '1'
+      Threshold: '1'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      Dimensions:
+      - Name: Environment
+        Value: !Ref Environment
+      - Name: AutoScalingGroupName
+        Value: !Ref MainAutoScalingGroup
+        
+  MainCodePipelineAlert:
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: Alert when CodePipeline Fails
+      EventPattern: 
+        source: 
+          - "aws.codepipeline"
+        detail-type: 
+          - "CodePipeline Pipeline Execution State Change"
+        detail: 
+          state: 
+            - "FAILED"
+          pipeline:
+            - !Ref MainCodePipeline
+      State: ENABLED
+      Targets:
+        - Arn:
+            Fn::ImportValue:
+              !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+          Id: !Join [ '-', [ !Ref Environment, LD-Main-CodePipeline-Alert ] ]
+
+Outputs:
+  LdMainSecurityGroupId:
+    Value: !Ref MainSecurityGroup
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, LD-MainSecurityGroupId ] ]

@@ -215,6 +215,28 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
   
+  LDDomainCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Sub
+                    - "*.${LDDomain}"
+                    - LDDomain: 
+                        Fn::ImportValue: !Sub ${Environment}-LD-Domain
+      DomainValidationOptions:
+        - DomainName: !Sub
+                    - "*.${LDDomain}"
+                    - LDDomain: 
+                        Fn::ImportValue: !Sub ${Environment}-LD-Domain
+          ValidationDomain:
+            Fn::ImportValue: !Sub ${Environment}-LD-Domain
+      SubjectAlternativeNames:
+        - Fn::ImportValue: !Sub ${Environment}-LD-Domain
+      Tags:
+        - Key: Name
+          Value: LDDomainCertificate
+        - Key: Environment
+          Value: !Ref Environment
+  
   # Write Admin Postgres queries to this Log Group/Stream
   
   AdminAuditLogGroup:
@@ -281,6 +303,11 @@ Resources:
     Type: AWS::CodeCommit::Repository
     Properties:
       RepositoryName: !Sub ${Environment}-Main
+  
+  LdMainCodeCommit:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Sub ${Environment}-LD-Main
   
   # ==================================================
   # ================ S3 BUCKETS ======================
@@ -2475,65 +2502,65 @@ Resources:
   #         MetricNamespace: !Join [ '-', [ !Ref Environment, Helper-Node, HttpErrors] ]
   #         MetricName: "404Count"
 
-  401MetricFilter: 
-    Type: AWS::Logs::MetricFilter
-    DependsOn:
-      - HelperNodeLogsLogGroup
-    Properties: 
-      LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node] ]
-      FilterPattern: "{ $.meta.error.statusCode = 401 }"
-      MetricTransformations: 
-        - 
-          MetricValue: "1"
-          MetricNamespace: !Join [ '-', [ !Ref Environment, Helper-Node, HttpErrors] ]
-          MetricName: "401Count"
+  # 401MetricFilter:
+  #   Type: AWS::Logs::MetricFilter
+  #   DependsOn:
+  #     - HelperNodeLogsLogGroup
+  #   Properties:
+  #     LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node] ]
+  #     FilterPattern: "{ $.meta.error.statusCode = 401 }"
+  #     MetricTransformations:
+  #       -
+  #         MetricValue: "1"
+  #         MetricNamespace: !Join [ '-', [ !Ref Environment, Helper-Node, HttpErrors] ]
+  #         MetricName: "401Count"
+  #
+  # 4xxMetricFilter:
+  #   Type: AWS::Logs::MetricFilter
+  #   DependsOn:
+  #     - HelperNodeLogsLogGroup
+  #   Properties:
+  #     LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node] ]
+  #     FilterPattern: "{ $.meta.error.statusCode >= 400 && $.meta.error.statusCode < 500 }"
+  #     MetricTransformations:
+  #       -
+  #         MetricValue: "1"
+  #         MetricNamespace: !Join [ '-', [ !Ref Environment, Helper-Node, HttpErrors] ]
+  #         MetricName: "4XXCount"
+  #
+  # 5xxMetricFilter:
+  #   Type: AWS::Logs::MetricFilter
+  #   DependsOn:
+  #     - HelperNodeLogsLogGroup
+  #   Properties:
+  #     LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node] ]
+  #     FilterPattern: "{ $.meta.error.statusCode >= 500 }"
+  #     MetricTransformations:
+  #       -
+  #         MetricValue: "1"
+  #         MetricNamespace: !Join [ '-', [ !Ref Environment, Helper-Node, HttpErrors] ]
+  #         MetricName: "5XXCount"
 
-  4xxMetricFilter: 
-    Type: AWS::Logs::MetricFilter
-    DependsOn:
-      - HelperNodeLogsLogGroup
-    Properties: 
-      LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node] ]
-      FilterPattern: "{ $.meta.error.statusCode >= 400 && $.meta.error.statusCode < 500 }"
-      MetricTransformations: 
-        - 
-          MetricValue: "1"
-          MetricNamespace: !Join [ '-', [ !Ref Environment, Helper-Node, HttpErrors] ]
-          MetricName: "4XXCount"
-  
-  5xxMetricFilter: 
-    Type: AWS::Logs::MetricFilter
-    DependsOn:
-      - HelperNodeLogsLogGroup
-    Properties: 
-      LogGroupName: !Join [ '-', [ !Ref Environment, Helper-Node] ]
-      FilterPattern: "{ $.meta.error.statusCode >= 500 }"
-      MetricTransformations: 
-        - 
-          MetricValue: "1"
-          MetricNamespace: !Join [ '-', [ !Ref Environment, Helper-Node, HttpErrors] ]
-          MetricName: "5XXCount"
-
-  HelperCodePipelineAlert:
-    Type: AWS::Events::Rule
-    Properties: 
-      Description: Alert when CodePipeline Fails
-      EventPattern: 
-        source: 
-          - "aws.codepipeline"
-        detail-type: 
-          - "CodePipeline Pipeline Execution State Change"
-        detail: 
-          state: 
-            - "FAILED"
-          pipeline:
-            - !Ref HelperCodePipeline
-      State: ENABLED
-      Targets:
-        - Arn:
-            Fn::ImportValue:
-              !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
-          Id: !Join [ '-', [ !Ref Environment, Helper-CodePipeline-Alert ] ]
+  # HelperCodePipelineAlert:
+  #   Type: AWS::Events::Rule
+  #   Properties:
+  #     Description: Alert when CodePipeline Fails
+  #     EventPattern:
+  #       source:
+  #         - "aws.codepipeline"
+  #       detail-type:
+  #         - "CodePipeline Pipeline Execution State Change"
+  #       detail:
+  #         state:
+  #           - "FAILED"
+  #         pipeline:
+  #           - !Ref HelperCodePipeline
+  #     State: ENABLED
+  #     Targets:
+  #       - Arn:
+  #           Fn::ImportValue:
+  #             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+  #         Id: !Join [ '-', [ !Ref Environment, Helper-CodePipeline-Alert ] ]
 
   # ==================================================
   # =========== VPC Peering And Routes ===============
@@ -2978,6 +3005,10 @@ Outputs:
     Value: !Ref DomainCertificate
     Export:
       Name: !Join [ '-', [ !Ref Environment, DomainCertificate ] ]
+  LDDomainCertificate:
+    Value: !Ref LDDomainCertificate
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, LD-DomainCertificate ] ]
   ClientBucket:
     Value: !Ref ClientBucket
     Export:
