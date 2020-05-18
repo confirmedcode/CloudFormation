@@ -16,6 +16,9 @@ Parameters:
     
   LockdownDomain:
     Type: String
+  
+  PrivacyReviewDomain:
+    Type: String
 
 Mappings: 
   
@@ -228,6 +231,20 @@ Resources:
       Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "LD_DOMAIN" ] ]
       Type: String
       Value: !Ref LockdownDomain
+  
+  PrivacyReviewDomainParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "COMMON", "PR_DOMAIN" ] ]
+      Type: String
+      Value: !Ref PrivacyReviewDomain
+
+  PrivacyReviewDomainTestParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "PR_DOMAIN" ] ]
+      Type: String
+      Value: !Ref PrivacyReviewDomain
 
   # ==================================================
   # ============ CODEPIPELINE ROLES ==================
@@ -927,6 +944,10 @@ Outputs:
     Value: !Ref LockdownDomain
     Export:
       Name: !Join [ '-', [ !Ref Environment, LD-Domain ] ]
+  PrivacyReviewDomain:
+    Value: !Ref PrivacyReviewDomain
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, PR-Domain ] ]
   ParameterStoreFunctionArn:
     Value: !GetAtt ParameterStoreFunction.Arn
     Export:

@@ -237,6 +237,28 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
   
+  PRDomainCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Sub
+                    - "*.${PRDomain}"
+                    - PRDomain: 
+                        Fn::ImportValue: !Sub ${Environment}-PR-Domain
+      DomainValidationOptions:
+        - DomainName: !Sub
+                    - "*.${PRDomain}"
+                    - PRDomain: 
+                        Fn::ImportValue: !Sub ${Environment}-PR-Domain
+          ValidationDomain:
+            Fn::ImportValue: !Sub ${Environment}-PR-Domain
+      SubjectAlternativeNames:
+        - Fn::ImportValue: !Sub ${Environment}-PR-Domain
+      Tags:
+        - Key: Name
+          Value: PRDomainCertificate
+        - Key: Environment
+          Value: !Ref Environment
+  
   # Write Admin Postgres queries to this Log Group/Stream
   
   AdminAuditLogGroup:
@@ -308,6 +330,11 @@ Resources:
     Type: AWS::CodeCommit::Repository
     Properties:
       RepositoryName: !Sub ${Environment}-LD-Main
+  
+  PrMainCodeCommit:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Sub ${Environment}-PR-Main
   
   # ==================================================
   # ================ S3 BUCKETS ======================
@@ -3009,6 +3036,10 @@ Outputs:
     Value: !Ref LDDomainCertificate
     Export:
       Name: !Join [ '-', [ !Ref Environment, LD-DomainCertificate ] ]
+  PRDomainCertificate:
+    Value: !Ref PRDomainCertificate
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, PR-DomainCertificate ] ]
   ClientBucket:
     Value: !Ref ClientBucket
     Export:
