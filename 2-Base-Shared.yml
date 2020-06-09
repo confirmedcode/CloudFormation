@@ -2498,7 +2498,7 @@ Resources:
   HelperLogsLogGroup:
     Type: AWS::Logs::LogGroup
     Properties: 
-      LogGroupName: !Join [ '-', [ !Ref Environment, Helper ] ]
+      LogGroupName: !Join [ '-', [ !Ref Environment, Helper-New ] ]
       
   HelperNodeLogsLogGroup:
     Type: AWS::Logs::LogGroup

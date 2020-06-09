@@ -224,6 +224,10 @@ Resources:
                   - arn:aws:s3:::${AdminAuditBucket}/*
                   - AdminAuditBucket:
                       Fn::ImportValue: !Sub ${Environment}-AdminAuditBucket
+            - Effect: Allow
+              Action:
+                - sqs:*
+              Resource: "*"
 
   AdminInstanceProfile:
     Type: AWS::IAM::InstanceProfile

@@ -1,0 +1,68 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Handle bounces and complaints for SES. Run in same region as SES.
+
+Parameters:
+
+  Environment:
+    Type: String
+    Description: Name of the environment.
+
+Resources:
+  
+  # ================= EMAIL HANDLING =================
+  
+  SesBouncesQueue:
+    Type: AWS::SQS::Queue
+    Properties: 
+      QueueName: !Sub ${Environment}-BouncesQueue
+      DelaySeconds: 0
+      KmsDataKeyReusePeriodSeconds: 300
+      MaximumMessageSize: 262144
+      MessageRetentionPeriod: 691200 # 8 days
+      VisibilityTimeout: 30
+      
+  SesBouncesTopic:
+    Type: AWS::SNS::Topic
+    Properties: 
+      TopicName: !Sub ${Environment}-BouncesTopic
+      Subscription:
+        - Endpoint: !GetAtt SesBouncesQueue.Arn
+          Protocol: sqs
+
+  SesComplaintsQueue:
+    Type: AWS::SQS::Queue
+    Properties: 
+      QueueName: !Sub ${Environment}-ComplaintsQueue
+      DelaySeconds: 0
+      KmsDataKeyReusePeriodSeconds: 300
+      MaximumMessageSize: 262144
+      MessageRetentionPeriod: 691200 # 8 days
+      VisibilityTimeout: 30
+  
+  SesComplaintsTopic:
+    Type: AWS::SNS::Topic
+    Properties: 
+      TopicName: !Sub ${Environment}-ComplaintsTopic
+      Subscription:
+        - Endpoint: !GetAtt SesComplaintsQueue.Arn
+          Protocol: sqs
+  
+  SesQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Id: AllowSqsSendMessage
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal: '*'
+          Action: sqs:SendMessage
+          Resource: !GetAtt SesBouncesQueue.Arn
+        - Effect: Allow
+          Principal: '*'
+          Action: sqs:SendMessage
+          Resource: !GetAtt SesComplaintsQueue.Arn
+      Queues: 
+        - !Ref SesBouncesQueue
+        - !Ref SesComplaintsQueue
