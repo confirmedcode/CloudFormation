@@ -1104,7 +1104,7 @@ Resources:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | LD Main Upgrade Check
       MetricName: "Last Upgrade Check Seconds"
-      Namespace: LD/Shared
+      Namespace: CVPN/Shared
       Statistic: Maximum
       Period: '43200'
       EvaluationPeriods: '1'
@@ -1129,7 +1129,7 @@ Resources:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | LD Main Restart Check
       MetricName: "# Packages Require Restart"
-      Namespace: LD/Shared
+      Namespace: CVPN/Shared
       Statistic: Minimum
       Period: '43200'
       EvaluationPeriods: '1'
@@ -1154,7 +1154,7 @@ Resources:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Main Security Packages Upgradable
       MetricName: "# Security Packages Upgradable"
-      Namespace: LD/Shared
+      Namespace: CVPN/Shared
       Statistic: Minimum
       Period: '43200'
       EvaluationPeriods: '2'
@@ -1179,7 +1179,7 @@ Resources:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Main Node Update Check
       MetricName: "NodeJS Outdated"
-      Namespace: LD/Shared
+      Namespace: CVPN/Shared
       Statistic: Minimum
       Period: '43200'
       EvaluationPeriods: '1'
