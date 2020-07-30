@@ -506,6 +506,17 @@ Resources:
                 - iam:ListServerCertificates
                 - lambda:List*
                 - lambda:Get*
+                - lightsail:GetActiveNames
+                - lightsail:GetInstance
+                - lightsail:GetInstancePortStates
+                - lightsail:GetInstanceState
+                - lightsail:GetInstances
+                - lightsail:GetOperation
+                - lightsail:GetOperations
+                - lightsail:GetOperationsForResource
+                - lightsail:GetRegions
+                - lightsail:GetStaticIp
+                - lightsail:GetStaticIps
                 - rds:Describe*
                 - route53:GetHostedZone
                 - route53:ListHostedZones
