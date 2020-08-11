@@ -427,6 +427,7 @@ Resources:
                 - cloudformation:Describe*
                 - cloudformation:Get*
                 - cloudformation:List*
+                - cloudformation:DetectStack*
                 - cloudtrail:Describe*
                 - cloudtrail:Get*
                 - cloudtrail:List*
