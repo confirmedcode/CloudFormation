@@ -420,6 +420,64 @@ Resources:
               - LDDomain: 
                   Fn::ImportValue: !Sub ${Environment}-LD-Domain
       Type: A
+
+  MainNewLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      #LoadBalancerAttributes: # prod only
+      #  - Key: deletion_protection.enabled
+      #    Value: true
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref MainLoadBalancerSecurityGroup
+      Subnets:
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, SubnetId ] ]
+        - Fn::ImportValue:
+            !Join [ '-', [ !Ref Environment, Subnet2Id ] ]
+      Tags:
+        - Key: Name
+          Value: LD-MainNewLoadBalancer
+        - Key: Environment
+          Value: !Ref Environment
+      Type: application
+      IpAddressType: ipv4
+
+  MainNewWwwDNSRecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties: 
+      AliasTarget: 
+        DNSName: !GetAtt MainNewLoadBalancer.DNSName
+        EvaluateTargetHealth: false
+        HostedZoneId: !GetAtt MainNewLoadBalancer.CanonicalHostedZoneID
+      Comment: !Join [ '-', [ !Ref Environment, MainNewLoadBalancer ] ]
+      HostedZoneName: !Sub
+                        - ${LDDomain}.
+                        - LDDomain: 
+                            Fn::ImportValue: !Sub ${Environment}-LD-New-Domain
+      Name: !Sub
+              - www.${LDDomain}
+              - LDDomain: 
+                  Fn::ImportValue: !Sub ${Environment}-LD-New-Domain
+      Type: A
+  
+  MainNewNakedDNSRecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt MainNewLoadBalancer.DNSName
+        EvaluateTargetHealth: false
+        HostedZoneId: !GetAtt MainNewLoadBalancer.CanonicalHostedZoneID
+      Comment: !Join [ '-', [ !Ref Environment, MainNewLoadBalancer ] ]
+      HostedZoneName: !Sub
+                        - ${LDDomain}.
+                        - LDDomain: 
+                            Fn::ImportValue: !Sub ${Environment}-LD-New-Domain
+      Name: !Sub
+              - ${LDDomain}
+              - LDDomain: 
+                  Fn::ImportValue: !Sub ${Environment}-LD-New-Domain
+      Type: A
       
   MainTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -457,8 +515,13 @@ Resources:
         - CertificateArn: 
             Fn::ImportValue: !Sub ${Environment}-LD-DomainCertificate
       DefaultActions:
-        - TargetGroupArn: !Ref MainTargetGroup
-          Type: forward
+        - Type: redirect
+          RedirectConfig:
+            Host: 
+              Fn::ImportValue: !Sub ${Environment}-LD-New-Domain
+            Port: 443
+            Protocol: HTTPS
+            StatusCode: HTTP_301
       LoadBalancerArn: !Ref MainLoadBalancer
       Port: 443
       Protocol: HTTPS
@@ -470,10 +533,39 @@ Resources:
       DefaultActions:
         - Type: redirect
           RedirectConfig:
+            Host: 
+              Fn::ImportValue: !Sub ${Environment}-LD-New-Domain
             Port: 443
             Protocol: HTTPS
             StatusCode: HTTP_301
       LoadBalancerArn: !Ref MainLoadBalancer
+      Port: 80
+      Protocol: HTTP
+  
+  MainNewLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      Certificates:
+        - CertificateArn: 
+            Fn::ImportValue: !Sub ${Environment}-LDNew-DomainCertificate
+      DefaultActions:
+        - TargetGroupArn: !Ref MainTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref MainNewLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS-1-2-Ext-2018-06
+
+  MainNewLoadBalancerHttpRedirectListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Port: 443
+            Protocol: HTTPS
+            StatusCode: HTTP_301
+      LoadBalancerArn: !Ref MainNewLoadBalancer
       Port: 80
       Protocol: HTTP
           

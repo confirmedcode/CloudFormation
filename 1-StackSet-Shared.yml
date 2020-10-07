@@ -17,6 +17,9 @@ Parameters:
   LockdownDomain:
     Type: String
   
+  LockdownNewDomain:
+    Type: String
+
   PrivacyReviewDomain:
     Type: String
 
@@ -232,6 +235,21 @@ Resources:
       Type: String
       Value: !Ref LockdownDomain
   
+  LockdownNewDomainParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Join ["/", ["", !Ref Environment, "COMMON", "LD_NEW_DOMAIN"]]
+      Type: String
+      Value: !Ref LockdownNewDomain
+
+  LockdownNewDomainTestParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name:
+        !Join ["/", ["", !Ref Environment, "TEST", "COMMON", "LD_NEW_DOMAIN"]]
+      Type: String
+      Value: !Ref LockdownNewDomain
+
   PrivacyReviewDomainParameter:
     Type: AWS::SSM::Parameter
     Properties:
@@ -944,6 +962,10 @@ Outputs:
     Value: !Ref LockdownDomain
     Export:
       Name: !Join [ '-', [ !Ref Environment, LD-Domain ] ]
+  LockdownNewDomain:
+    Value: !Ref LockdownNewDomain
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, LD-New-Domain ] ]
   PrivacyReviewDomain:
     Value: !Ref PrivacyReviewDomain
     Export:

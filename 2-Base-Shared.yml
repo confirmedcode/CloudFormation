@@ -236,6 +236,28 @@ Resources:
           Value: LDDomainCertificate
         - Key: Environment
           Value: !Ref Environment
+
+  LDNewDomainCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Sub
+                    - "*.${LDNewDomain}"
+                    - LDNewDomain: 
+                        Fn::ImportValue: !Sub ${Environment}-LD-New-Domain
+      DomainValidationOptions:
+        - DomainName: !Sub
+                    - "*.${LDNewDomain}"
+                    - LDNewDomain: 
+                        Fn::ImportValue: !Sub ${Environment}-LD-New-Domain
+          ValidationDomain:
+            Fn::ImportValue: !Sub ${Environment}-LD-New-Domain
+      SubjectAlternativeNames:
+        - Fn::ImportValue: !Sub ${Environment}-LD-New-Domain
+      Tags:
+        - Key: Name
+          Value: LDNewDomainCertificate
+        - Key: Environment
+          Value: !Ref Environment
   
   PRDomainCertificate:
     Type: AWS::CertificateManager::Certificate
@@ -2190,30 +2212,30 @@ Resources:
       - Name: CacheNodeId
         Value: "0001"
         
-  RedisSwapUsageAlarm2:
-    Type: AWS::CloudWatch::Alarm
-    Condition: CreateSecondRedisAlarm
-    DependsOn:
-      - RedisSwapUsageAlarm1
-    Properties:
-      ActionsEnabled: true
-      AlarmActions: 
-        - Fn::ImportValue:
-            !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
-      AlarmDescription: !Sub ${Environment} | Redis Swap 2
-      MetricName: SwapUsage
-      Namespace: AWS/ElastiCache
-      Statistic: Maximum
-      Period: '300'
-      EvaluationPeriods: '1'
-      Threshold: '25000000'
-      ComparisonOperator: GreaterThanThreshold
-      TreatMissingData: breaching
-      Dimensions:
-      - Name: CacheClusterId
-        Value: !Join [ '-', [ !Ref Redis, "002" ] ]
-      - Name: CacheNodeId
-        Value: "0001"
+  # RedisSwapUsageAlarm2:
+  #   Type: AWS::CloudWatch::Alarm
+  #   Condition: CreateSecondRedisAlarm
+  #   DependsOn:
+  #     - RedisSwapUsageAlarm1
+  #   Properties:
+  #     ActionsEnabled: true
+  #     AlarmActions: 
+  #       - Fn::ImportValue:
+  #           !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
+  #     AlarmDescription: !Sub ${Environment} | Redis Swap 2
+  #     MetricName: SwapUsage
+  #     Namespace: AWS/ElastiCache
+  #     Statistic: Maximum
+  #     Period: '300'
+  #     EvaluationPeriods: '1'
+  #     Threshold: '25000000'
+  #     ComparisonOperator: GreaterThanThreshold
+  #     TreatMissingData: breaching
+  #     Dimensions:
+  #     - Name: CacheClusterId
+  #       Value: !Join [ '-', [ !Ref Redis, "002" ] ]
+  #     - Name: CacheNodeId
+  #       Value: "0001"
   
         
   # ==================================================
@@ -3036,6 +3058,10 @@ Outputs:
     Value: !Ref LDDomainCertificate
     Export:
       Name: !Join [ '-', [ !Ref Environment, LD-DomainCertificate ] ]
+  LDNewDomainCertificate:
+    Value: !Ref LDNewDomainCertificate
+    Export:
+      Name: !Join [ '-', [ !Ref Environment, LDNew-DomainCertificate ] ]
   PRDomainCertificate:
     Value: !Ref PRDomainCertificate
     Export:
