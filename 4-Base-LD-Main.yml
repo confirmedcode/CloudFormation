@@ -1040,7 +1040,7 @@ Resources:
       - Name: TargetGroup
         Value: !GetAtt MainTargetGroup.TargetGroupFullName
       - Name: LoadBalancer
-        Value: !GetAtt MainLoadBalancer.LoadBalancerFullName
+        Value: !GetAtt MainNewLoadBalancer.LoadBalancerFullName
   
   MainTargetGroupHealthyHostAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -1065,7 +1065,7 @@ Resources:
       - Name: TargetGroup
         Value: !GetAtt MainTargetGroup.TargetGroupFullName
       - Name: LoadBalancer
-        Value: !GetAtt MainLoadBalancer.LoadBalancerFullName
+        Value: !GetAtt MainNewLoadBalancer.LoadBalancerFullName
   
   MainTargetGroupLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
