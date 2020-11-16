@@ -1462,7 +1462,7 @@ Resources:
       Statistic: Maximum
       Period: '300'
       EvaluationPeriods: '1'
-      Threshold: '75'
+      Threshold: '85'
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: ignore
       Dimensions:
