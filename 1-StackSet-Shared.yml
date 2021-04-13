@@ -887,7 +887,7 @@ Resources:
                   aws cloudwatch put-metric-data --metric-name "Last Upgrade Check Seconds" --namespace CVPN/Shared --unit Seconds --value \$SECONDS_SINCE_LAST_UPGRADE_CHECK --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
                   aws cloudwatch put-metric-data --metric-name "# Security Packages Upgradable" --namespace CVPN/Shared --unit Count --value \$NUM_UPGRADABLE_SECURITY_PACKAGES --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
                 	aws cloudwatch put-metric-data --metric-name "# Packages Require Restart" --namespace CVPN/Shared --unit Count --value \$NUM_PACKAGES_REQUIRE_RESTART --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
-                  if [ "\$CURRENT_NODE_VERSION" != "\$LATEST_LTS_NODE_VERSION" ];
+                  if [ "\$CURRENT_NODE_VERSION" != "\$LATEST_LTS_NODE_VERSION" ] || [ -z "\$LATEST_LTS_NODE_VERSION" ];
                   then
                   	aws cloudwatch put-metric-data --metric-name "NodeJS Outdated" --namespace CVPN/Shared --unit Count --value 1 --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
                   else
