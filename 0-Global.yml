@@ -1,27 +1,27 @@
 ---
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Run once per AWS account. 1) CloudTrail 2) CloudWatch alerts for CloudTrail 3) Audit IAM group and user 4) Allow StackSets to be created/managed. 
+Description: Run once per AWS account. 1) CloudTrail 2) CloudWatch alerts for CloudTrail 3) Audit IAM group and user 4) Allow StackSets to be created/managed.
 
 Parameters:
-  
+
   AdministratorAccountId:
     Type: String
     Description: AWS Account Id of the administrator account (the account in which StackSets will be created).
     MaxLength: 12
     MinLength: 12
-  
+
   AlertEmail:
     Type: String
     Description: Email address to send CloudWatch Alerts to.
-  
+
   TrailName:
     Type: String
     Default: CloudTrail
 
 Resources:
-  
+
   # ========== The CloudTrail ==========
-            
+
   CloudTrail:
     Type: AWS::CloudTrail::Trail
     DependsOn:
@@ -39,9 +39,9 @@ Resources:
       IsMultiRegionTrail: true
       S3BucketName: !Ref CloudTrailBucket
       TrailName: !Ref TrailName
-  
+
   # ========== S3 Bucket for CloudTrail ==========
-  
+
   CloudTrailBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
@@ -49,7 +49,7 @@ Resources:
       AccessControl: Private
       VersioningConfiguration:
         Status: Enabled
-  
+
   CloudTrailBucketPolicy:
     Type: AWS::S3::BucketPolicy
     DependsOn:
@@ -74,14 +74,14 @@ Resources:
             Condition:
               StringEquals:
                 s3:x-amz-acl: bucket-owner-full-control
-  
+
   # ========== CloudWatch Logs for CloudTrail ==========
-  
+
   CloudTrailCloudWatchLogsLogGroup:
     Type: AWS::Logs::LogGroup
-    Properties: 
+    Properties:
       LogGroupName: !Ref TrailName
-  
+
   CloudTrailCloudWatchLogsRole:
     Type: AWS::IAM::Role
     Properties:
@@ -110,14 +110,14 @@ Resources:
             Action:
             - logs:PutLogEvents
             Resource: !Sub arn:aws:logs:${AWS::Region}:*:log-group:${CloudTrailCloudWatchLogsLogGroup}:log-stream:*
-            
+
   # ========== Email Alert On CloudTrail Triggers ==========
-  
+
   AdminEmailerTopic:
     Type: AWS::SNS::Topic
     DependsOn:
       - CloudTrail
-    Properties: 
+    Properties:
       DisplayName: Admin Alerts
       Subscription:
         - Endpoint: !Ref AlertEmail
@@ -158,18 +158,18 @@ Resources:
               AWS:SourceOwner: !Ref AWS::AccountId
       Topics:
         - !Ref AdminEmailerTopic
-        
+
   # Create a filtered version of the CloudTrail logs for events of interest
   CloudTrailFilteredCloudWatchLogsLogGroup:
     Type: AWS::Logs::LogGroup
     DependsOn:
       - CloudTrail
-    Properties: 
+    Properties:
       LogGroupName: !Sub ${TrailName}-Filtered
-  
+
   CloudTrailFilteredCloudWatchLogsLogStream:
     Type: AWS::Logs::LogStream
-    Properties: 
+    Properties:
       LogGroupName: !Ref CloudTrailFilteredCloudWatchLogsLogGroup
       LogStreamName: !Ref CloudTrailFilteredCloudWatchLogsLogGroup
 
@@ -200,8 +200,8 @@ Resources:
                   eventNames = eventNames + message.eventName + ", ";
                 }
                 return sns.publish({
-                  Message: messageText, 
-                  Subject: "CloudTrail " + eventNames, 
+                  Message: messageText,
+                  Subject: "CloudTrail " + eventNames,
                   TopicArn: "${AdminEmailerTopic}"
                 }).promise()
                 .catch( error => {
@@ -300,32 +300,32 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: !Sub logs.${AWS::Region}.amazonaws.com
       SourceAccount: !Ref 'AWS::AccountId'
-    
+
   CloudTrailSubscriptionFilter:
     Type: AWS::Logs::SubscriptionFilter
     DependsOn:
       - CloudTrail
-    Properties: 
+    Properties:
       DestinationArn: !GetAtt CloudTrailEmailerFunction.Arn
       FilterPattern: '{ $.eventName=AuthorizeSecurityGroupIngress || $.eventName=AuthorizeSecurityGroupEgress
-|| $.eventName=CreateSecurityGroup || $.eventName=DeleteSecurityGroup 
+|| $.eventName=CreateSecurityGroup || $.eventName=DeleteSecurityGroup
 || (( $.eventName=GetParametersByPath || $.eventName=GetParameter || $.eventName=GetParameters ) && $.requestParameters.withDecryption IS TRUE)
 || $.eventName=RunInstances || $.eventName=StartInstances || $.eventName=TerminateInstances
 || $.eventName=UpdateTrail || $.eventName=DeleteTrail || $.eventName=StopLogging
-|| $.eventName=PutGroupPolicy || $.eventName=PutRolePolicy || $.eventName=PutUserPolicy 
+|| $.eventName=PutGroupPolicy || $.eventName=PutRolePolicy || $.eventName=PutUserPolicy
 || $.eventName=CreatePolicyVersion || $.eventName=AttachRolePolicy || $.eventName=AttachUserPolicy || $.eventName=AttachGroupPolicy}'
       LogGroupName: !Ref TrailName
 
   # ==================================================
   # ======= OPENWATCH USER & AUDIT IAM GROUP =========
   # ==================================================
-  
+
   OpenWatchUserAccessKey:
     Type: AWS::IAM::AccessKey
     DependsOn:
       - CloudTrail
       - OpenWatchUser
-    Properties: 
+    Properties:
       Status: Active
       UserName: !Ref OpenWatchUser
 
@@ -520,6 +520,7 @@ Resources:
                 - lightsail:GetStaticIps
                 - rds:Describe*
                 - route53:GetHostedZone
+                - route53:GetHostedZoneCount
                 - route53:ListHostedZones
                 - route53:ListHostedZonesByName
                 - route53:ListResourceRecordSets
@@ -536,7 +537,7 @@ Resources:
   # ==================================================
   # =========== ALLOW STACKSET MANAGEMENT ============
   # ==================================================
-      
+
   AdministrationRole:
     Type: AWS::IAM::Role
     DependsOn:
@@ -562,7 +563,7 @@ Resources:
                   - sts:AssumeRole
                 Resource:
                   - "arn:aws:iam::*:role/AWSCloudFormationStackSetExecutionRole"
-                  
+
   ExecutionRole:
     Type: AWS::IAM::Role
     DependsOn:
@@ -583,7 +584,7 @@ Resources:
         - arn:aws:iam::aws:policy/AdministratorAccess
 
 Outputs:
-  
+
   OpenWatchUserAccessKeyId:
     Value: !Ref OpenWatchUserAccessKey
     Export:
