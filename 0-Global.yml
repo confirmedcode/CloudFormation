@@ -237,7 +237,7 @@ Resources:
           };
       Handler: index.handler
       Role: !GetAtt CloudTrailEmailerFunctionRole.Arn
-      Runtime: nodejs10.x
+      Runtime: nodejs12.x
       Timeout: 10
 
   CloudTrailEmailerCloudWatchPermission:

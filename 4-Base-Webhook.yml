@@ -3,7 +3,7 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: Webhook
 
 Parameters:
-  
+
   Environment:
     Type: String
     Description: Name of the environment
@@ -13,90 +13,90 @@ Parameters:
     Type: String
     Description: AMI
     Default: ""
-  
+
   InstanceType:
     Type: String
     Description: Instance Type
     Default: t3.micro
 
-Conditions: 
-  
+Conditions:
+
   OverrideAMI: !Not [!Equals [!Ref UbuntuAMI, ""]]
 
-Mappings: 
-  
-  RegionMap: 
-    us-east-1: 
-      AMI: ami-0735ea082a1534cac
+Mappings:
+
+  RegionMap:
+    us-east-1:
+      AMI: ami-0747bdcabd34c712a
       InstanceType: t3.small
       EbsOptimized: true
     us-east-2:
-      AMI: ami-04c305e118636bc7d
+      AMI: ami-0b9064170e32bde34
       InstanceType: t3.small
       EbsOptimized: true
-    us-west-1: 
-      AMI: ami-0f5113ce7686689e9
+    us-west-1:
+      AMI: ami-07b068f843ec78e72
       InstanceType: t3.small
       EbsOptimized: true
-    us-west-2: 
-      AMI: ami-01e0cf6e025c036e4
+    us-west-2:
+      AMI: ami-090717c950a5c34d3
       InstanceType: t3.small
       EbsOptimized: true
     ap-south-1:
-      AMI: ami-0c6c52d7cf1004825
+      AMI: ami-04bde106886a53080
       InstanceType: t2.small
       EbsOptimized: false
     ap-northeast-2:
-      AMI: ami-0035936492be04cff
+      AMI: ami-0ba5cd124d7a79612
       InstanceType: t2.small
       EbsOptimized: false
     ap-southeast-1:
-      AMI: ami-0d97809b54a5f01ba
+      AMI: ami-055147723b7bca09a
       InstanceType: t3.small
       EbsOptimized: true
     ap-southeast-2:
-      AMI: ami-05162512c82cb460f
+      AMI: ami-0f39d06d145e9bb63
       InstanceType: t2.small
       EbsOptimized: false
     ap-northeast-1:
-      AMI: ami-06317ca3b39714f7e
+      AMI: ami-0fe22bffdec36361c
       InstanceType: t3.small
       EbsOptimized: true
     ca-central-1:
-      AMI: ami-0a5443ed7b0a45901
+      AMI: ami-0e28822503eeedddc
       InstanceType: t3.small
       EbsOptimized: true
     eu-central-1:
-      AMI: ami-0dd0be70cc0d493b7
+      AMI: ami-0b1deee75235aa4bb
       InstanceType: t3.small
       EbsOptimized: true
     eu-west-1:
-      AMI: ami-00b36349b3dba2ec3
+      AMI: ami-0943382e114f188e8
       InstanceType: t3.small
       EbsOptimized: true
     eu-west-2:
-      AMI: ami-06f77073d7dc4c48a
+      AMI: ami-09a56048b08f94cdf
       InstanceType: t3.small
       EbsOptimized: true
     eu-west-3:
-      AMI: ami-0b26151106502588d
+      AMI: ami-06602da18c878f98d
       InstanceType: t2.small
       EbsOptimized: false
     sa-east-1:
-      AMI: ami-0f7c76bfc85e5b4ea
+      AMI: ami-05aa753c043f1dcd3
       InstanceType: t2.small
       EbsOptimized: false
-  
+
 Resources:
 
   # ==================================================
   # =================== SECURITY GROUPS ==============
   # ==================================================
-  
+
   WebhookSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      VpcId: 
+      VpcId:
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, VPCId ] ]
       GroupDescription: HTTP (Load Balancer), Postgres In
@@ -105,11 +105,11 @@ Resources:
           Value: Webhook
         - Key: Environment
           Value: !Ref Environment
-  
+
   WebhookLoadBalancerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      VpcId: 
+      VpcId:
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, VPCId ] ]
       GroupDescription: HTTPS In
@@ -118,7 +118,7 @@ Resources:
           Value: WebhookLoadBalancer
         - Key: Environment
           Value: !Ref Environment
-  
+
   WebhookLoadBalancerWebhookSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -128,7 +128,7 @@ Resources:
       Description: Allow HTTP from Webhook Load Balancer to Webhook
       SourceSecurityGroupId: !Ref WebhookLoadBalancerSecurityGroup
       GroupId: !Ref WebhookSecurityGroup
-  
+
   WebhookDatabaseSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -140,7 +140,7 @@ Resources:
       GroupId:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, DatabaseSecurityGroupId ] ]
-  
+
   ExternalIPv4ToWebhookLoadBalancerSecurityGroupIngress1:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -150,7 +150,7 @@ Resources:
       Description: Allow HTTPS from Stripe to Webhook Load Balancer
       CidrIp: 54.187.174.169/32
       GroupId: !Ref WebhookLoadBalancerSecurityGroup
-  
+
   ExternalIPv4ToWebhookLoadBalancerSecurityGroupIngress2:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -160,7 +160,7 @@ Resources:
       Description: Allow HTTPS from Stripe to Webhook Load Balancer
       CidrIp: 54.187.205.235/32
       GroupId: !Ref WebhookLoadBalancerSecurityGroup
-  
+
   ExternalIPv4ToWebhookLoadBalancerSecurityGroupIngress3:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -170,7 +170,7 @@ Resources:
       Description: Allow HTTPS from Stripe to Webhook Load Balancer
       CidrIp: 54.187.216.72/32
       GroupId: !Ref WebhookLoadBalancerSecurityGroup
-  
+
   ExternalIPv4ToWebhookLoadBalancerSecurityGroupIngress4:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -180,7 +180,7 @@ Resources:
       Description: Allow HTTPS from Stripe to Webhook Load Balancer
       CidrIp: 54.241.31.99/32
       GroupId: !Ref WebhookLoadBalancerSecurityGroup
-  
+
   ExternalIPv4ToWebhookLoadBalancerSecurityGroupIngress5:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -190,7 +190,7 @@ Resources:
       Description: Allow HTTPS from Stripe to Webhook Load Balancer
       CidrIp: 54.241.31.102/32
       GroupId: !Ref WebhookLoadBalancerSecurityGroup
-  
+
   ExternalIPv4ToWebhookLoadBalancerSecurityGroupIngress6:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -200,16 +200,16 @@ Resources:
       Description: Allow HTTPS from Stripe to Webhook Load Balancer
       CidrIp: 54.241.34.107/32
       GroupId: !Ref WebhookLoadBalancerSecurityGroup
-      
+
   # ==================================================
   # ================== CODEPIPELINE ==================
   # ==================================================
-      
+
   WebhookCodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
       Name: !Join [ '-', [ !Ref Environment, Webhook ] ]
-      ServiceRole: 
+      ServiceRole:
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, CodeBuildRoleArn ] ]
       Artifacts:
@@ -241,10 +241,10 @@ Resources:
         Type: CODEPIPELINE
       TimeoutInMinutes: 15
       VpcConfig:
-        SecurityGroupIds: 
+        SecurityGroupIds:
           - Fn::ImportValue:
               !Join [ '-', [ !Ref Environment, TestCodeBuildSecurityGroupId ] ]
-        Subnets: 
+        Subnets:
           - Fn::ImportValue:
               !Join [ '-', [ !Ref Environment, TestPrivateSubnet ] ]
           - Fn::ImportValue:
@@ -255,7 +255,7 @@ Resources:
       Tags:
         - Key: Environment
           Value: !Ref Environment
-  
+
   WebhookCodePipeline:
     Type: AWS::CodePipeline::Pipeline
     DependsOn:
@@ -274,7 +274,7 @@ Resources:
             !Join [ '-', [ !Ref Environment, ArtifactBucket ] ]
         Type: S3
       Name: !Join [ '-', [ !Ref Environment, Webhook ] ]
-      RoleArn: 
+      RoleArn:
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, CodePipelineRoleArn ] ]
       Stages:
@@ -323,15 +323,15 @@ Resources:
                 DeploymentGroupName: !Ref WebhookDeploymentGroup
               InputArtifacts:
                 - Name: CodeBuildArtifact
-  
+
   WebhookApplication:
     Type: AWS::CodeDeploy::Application
     Properties:
       ApplicationName: !Join [ '-', [ !Ref Environment, Webhook ] ]
 
-  WebhookDeploymentGroup: 
+  WebhookDeploymentGroup:
     Type: AWS::CodeDeploy::DeploymentGroup
-    Properties: 
+    Properties:
       ApplicationName: !Ref WebhookApplication
       AutoScalingGroups:
         - !Ref WebhookAutoScalingGroup
@@ -342,14 +342,14 @@ Resources:
       LoadBalancerInfo:
         TargetGroupInfoList:
           - Name: !GetAtt WebhookTargetGroup.TargetGroupName
-      ServiceRoleArn: 
+      ServiceRoleArn:
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, CodeDeployRoleArn ] ]
 
   # ==================================================
   # ============= Instance Role ======================
   # ==================================================
-             
+
   WebhookRole:
     Type: AWS::IAM::Role
     Properties:
@@ -404,11 +404,11 @@ Resources:
     Properties:
       Roles:
         - !Ref WebhookRole
-  
+
   # ==================================================
   # ====================== Webhook ======================
   # ==================================================
-  
+
   WebhookLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -430,22 +430,22 @@ Resources:
           Value: !Ref Environment
       Type: application
       IpAddressType: ipv4
-  
+
   WebhookWwwDNSRecordSet:
     Type: AWS::Route53::RecordSet
-    Properties: 
-      AliasTarget: 
+    Properties:
+      AliasTarget:
         DNSName: !GetAtt WebhookLoadBalancer.DNSName
         EvaluateTargetHealth: false
         HostedZoneId: !GetAtt WebhookLoadBalancer.CanonicalHostedZoneID
       Comment: !Join [ '-', [ !Ref Environment, WebhookLoadBalancer ] ]
       HostedZoneName: !Sub
                         - ${Domain}.
-                        - Domain: 
+                        - Domain:
                             Fn::ImportValue: !Sub ${Environment}-Domain
       Name: !Sub
               - webhook.${Domain}
-              - Domain: 
+              - Domain:
                   Fn::ImportValue: !Sub ${Environment}-Domain
       Type: A
 
@@ -477,12 +477,12 @@ Resources:
       VpcId:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, VPCId ] ]
-  
+
   WebhookLoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties: 
+    Properties:
       Certificates:
-        - CertificateArn: 
+        - CertificateArn:
             Fn::ImportValue: !Sub ${Environment}-DomainCertificate
       DefaultActions:
         - TargetGroupArn: !Ref WebhookTargetGroup
@@ -491,7 +491,7 @@ Resources:
       Port: 443
       Protocol: HTTPS
       SslPolicy: ELBSecurityPolicy-TLS-1-2-Ext-2018-06
-          
+
   WebhookAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     CreationPolicy:
@@ -527,7 +527,7 @@ Resources:
           PropagateAtLaunch: true
       TargetGroupARNs:
         - !Ref WebhookTargetGroup
-          
+
   WebhookLaunchConfiguration:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
@@ -549,32 +549,31 @@ Resources:
         "Fn::Base64":
           !Sub |
             #!/bin/bash -ex
-            # Install Updates and Python SetupTools (for easy_install)
+            # Install Updates and Python3
             export DEBIAN_FRONTEND=noninteractive
             apt-get update && apt-get dist-upgrade -yq
-            apt-get -yq install python-setuptools
+            apt-get -yq install python3.7-distutils python3-pip python3 python3-setuptools
             # Install CloudFormation Bootstrap
-            easy_install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz
-            ln -s /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup /etc/init.d/cfn-hup
-            chmod +x /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup
-            update-rc.d cfn-hup defaults
+            wget https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz
+            tar -xvzf aws-cfn-bootstrap-py3-latest.tar.gz
+            cd aws-cfn-bootstrap-2.0
+            python3 setup.py install
             # Run CloudFormation In
             cfn-init -c default --stack ${AWS::StackName} --resource WebhookLaunchConfiguration --region ${AWS::Region}
             # Signal success to CloudFormation on reboot
-            echo "@reboot root /usr/local/bin/cfn-signal --success true --stack ${AWS::StackName} --resource WebhookAutoScalingGroup --region ${AWS::Region} 2>&1 | /usr/bin/logger -t cfn_success" >> /etc/cron.d/success_on_reboot            
+            echo "@reboot root /usr/local/bin/cfn-signal --success true --stack ${AWS::StackName} --resource WebhookAutoScalingGroup --region ${AWS::Region} 2>&1 | /usr/bin/logger -t cfn_success" >> /etc/cron.d/success_on_reboot
             echo "@reboot root /home/ubuntu/install-codedeploy.sh 2>&1 | /usr/bin/logger -t install_codedeploy" >> /etc/cron.d/install_codedeploy_on_reboot
             # Reboot to pick up latest patches
             reboot
     Metadata:
       AWS::CloudFormation::Init:
-        configSets: 
+        configSets:
           default:
             - "unattended-upgrades"
             - "enable-swap"
             - "install-pip-and-curl-and-ruby"
             - "set-region-and-environment"
             - "install-aws-cloudwatch-and-cli"
-            - "setup-cfn-hup"
             - "install-node"
             - "forward-node-port-on-reboot"
             - "install-pm2"
@@ -642,7 +641,7 @@ Resources:
             3_set_git_branch:
               command: !Sub
                 - echo GIT_BRANCH=${Branch} >> /etc/environment
-                - Branch: 
+                - Branch:
                     Fn::ImportValue:
                       !Join [ '-', [ !Ref Environment, GitBranch ] ]
         install-aws-cloudwatch-and-cli:
@@ -691,11 +690,6 @@ Resources:
                             "file_path": "/var/log/cfn-init-cmd.log",
                             "log_group_name": "${Environment}-Webhook",
                             "log_stream_name": "{instance_id}-cfn-init-cmd"
-                          },
-                          {
-                            "file_path": "/var/log/cfn-hup.log",
-                            "log_group_name": "${Environment}-Webhook",
-                            "log_stream_name": "{instance_id}-cfn-hup"
                           },
                           {
                             "file_path": "/var/log/amazon/ssm/amazon-ssm-agent.log",
@@ -804,35 +798,6 @@ Resources:
                 cd /home/ubuntu/cloudwatch_agent
                 ./install.sh
                 /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/home/ubuntu/cloudwatch.config -s
-        setup-cfn-hup:
-           files:
-             '/etc/cfn/cfn-hup.conf':
-               content: !Sub |
-                 [main]
-                 stack=${AWS::StackId}
-                 region=${AWS::Region}
-                 interval=1
-               mode: '000400'
-               owner: root
-               group: root
-             '/etc/cfn/hooks.d/cfn-auto-reloader.conf':
-               content: !Sub |
-                 [cfn-auto-reloader-hook]
-                 triggers=post.update
-                 path=Resources.WebhookLaunchConfiguration.Metadata.AWS::CloudFormation::Init
-                 action=cfn-init --verbose --stack=${AWS::StackName} --region=${AWS::Region} --resource=WebhookLaunchConfiguration --configsets updateable
-                 runas=root
-               mode: '000400'
-               owner: root
-               group: root
-           services:
-             sysvinit:
-               cfn-hup:
-                 enabled: true
-                 ensureRunning: true
-                 files:
-                 - '/etc/cfn/cfn-hup.conf'
-                 - '/etc/cfn/hooks.d/cfn-auto-reloader.conf'
         install-node:
           commands:
             0_create_user:
@@ -846,7 +811,7 @@ Resources:
                         --home /home/node \
                         node
             1_setup:
-              command: curl -sL https://deb.nodesource.com/setup_10.x | bash -
+              command: curl -sL https://deb.nodesource.com/setup_12.x | bash -
             2_install:
               command: apt-get install -yq nodejs
             3_update_npm:
@@ -873,66 +838,66 @@ Resources:
   # ==================================================
   # ============ APPLICATION ERROR ALERTS ============
   # ==================================================
-  
+
   WebhookNodeEmailerSubscriptionFilter:
     Type: AWS::Logs::SubscriptionFilter
     DependsOn:
       - WebhookAutoScalingGroup
-    Properties: 
+    Properties:
       DestinationArn:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, ErrorEmailerFunctionArn ] ]
       FilterPattern: '{ $.level = "error" }'
       LogGroupName: !Join [ '-', [ !Ref Environment, Webhook-Node ] ]
-  
-  404MetricFilter: 
+
+  404MetricFilter:
     Type: AWS::Logs::MetricFilter
     DependsOn:
       - WebhookAutoScalingGroup
-    Properties: 
+    Properties:
       LogGroupName: !Join [ '-', [ !Ref Environment, Webhook-Node] ]
       FilterPattern: "{ $.meta.res.statusCode = 404 }"
-      MetricTransformations: 
-        - 
+      MetricTransformations:
+        -
           MetricValue: "1"
           MetricNamespace: !Join [ '-', [ !Ref Environment, Webhook-Node, HttpErrors] ]
           MetricName: "404Count"
 
-  401MetricFilter: 
+  401MetricFilter:
     Type: AWS::Logs::MetricFilter
     DependsOn:
       - WebhookAutoScalingGroup
-    Properties: 
+    Properties:
       LogGroupName: !Join [ '-', [ !Ref Environment, Webhook-Node] ]
       FilterPattern: "{ $.meta.error.statusCode = 401 }"
-      MetricTransformations: 
-        - 
+      MetricTransformations:
+        -
           MetricValue: "1"
           MetricNamespace: !Join [ '-', [ !Ref Environment, Webhook-Node, HttpErrors] ]
           MetricName: "401Count"
 
-  4xxMetricFilter: 
+  4xxMetricFilter:
     Type: AWS::Logs::MetricFilter
     DependsOn:
       - WebhookAutoScalingGroup
-    Properties: 
+    Properties:
       LogGroupName: !Join [ '-', [ !Ref Environment, Webhook-Node] ]
       FilterPattern: "{ $.meta.error.statusCode >= 400 && $.meta.error.statusCode < 500 }"
-      MetricTransformations: 
-        - 
+      MetricTransformations:
+        -
           MetricValue: "1"
           MetricNamespace: !Join [ '-', [ !Ref Environment, Webhook-Node, HttpErrors] ]
           MetricName: "4XXCount"
-  
-  5xxMetricFilter: 
+
+  5xxMetricFilter:
     Type: AWS::Logs::MetricFilter
     DependsOn:
       - WebhookAutoScalingGroup
-    Properties: 
+    Properties:
       LogGroupName: !Join [ '-', [ !Ref Environment, Webhook-Node] ]
       FilterPattern: "{ $.meta.error.statusCode >= 500 }"
-      MetricTransformations: 
-        - 
+      MetricTransformations:
+        -
           MetricValue: "1"
           MetricNamespace: !Join [ '-', [ !Ref Environment, Webhook-Node, HttpErrors] ]
           MetricName: "5XXCount"
@@ -940,14 +905,14 @@ Resources:
   # ==================================================
   # ================= CLOUDWATCH ALARMS ==============
   # ==================================================
-    
+
   WebhookTargetGroupUnhealthyHostAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
       - WebhookAutoScalingGroup
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Webhook Unhealthy Host
@@ -964,7 +929,7 @@ Resources:
         Value: !GetAtt WebhookTargetGroup.TargetGroupFullName
       - Name: LoadBalancer
         Value: !GetAtt WebhookLoadBalancer.LoadBalancerFullName
-  
+
   WebhookTargetGroupHealthyHostAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -972,7 +937,7 @@ Resources:
       - WebhookTargetGroupUnhealthyHostAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Webhook Healthy Host
@@ -989,7 +954,7 @@ Resources:
         Value: !GetAtt WebhookTargetGroup.TargetGroupFullName
       - Name: LoadBalancer
         Value: !GetAtt WebhookLoadBalancer.LoadBalancerFullName
-  
+
   WebhookTargetGroupLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -997,7 +962,7 @@ Resources:
       - WebhookTargetGroupHealthyHostAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Webhook Latency
@@ -1022,7 +987,7 @@ Resources:
       - WebhookTargetGroupLatencyAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Webhook CPU
@@ -1037,7 +1002,7 @@ Resources:
       Dimensions:
       - Name: AutoScalingGroupName
         Value: !Ref WebhookAutoScalingGroup
-        
+
   LowMemoryAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1045,7 +1010,7 @@ Resources:
       - WebhookTargetGroupLatencyAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Webhook Low Memory
@@ -1060,7 +1025,7 @@ Resources:
       Dimensions:
       - Name: AutoScalingGroupName
         Value: !Ref WebhookAutoScalingGroup
-  
+
   SwapUsageAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1068,7 +1033,7 @@ Resources:
       - LowMemoryAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Webhook Swap Usage
@@ -1083,7 +1048,7 @@ Resources:
       Dimensions:
       - Name: AutoScalingGroupName
         Value: !Ref WebhookAutoScalingGroup
-  
+
   DiskUsageAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1091,7 +1056,7 @@ Resources:
       - SwapUsageAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Webhook Disk Usage
@@ -1106,7 +1071,7 @@ Resources:
       Dimensions:
       - Name: AutoScalingGroupName
         Value: !Ref WebhookAutoScalingGroup
-        
+
   UpgradeCheckAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1114,7 +1079,7 @@ Resources:
       - DiskUsageAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Webhook Upgrade Check
@@ -1139,7 +1104,7 @@ Resources:
       - UpgradeCheckAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Webhook Restart Check
@@ -1181,7 +1146,7 @@ Resources:
         Value: !Ref Environment
       - Name: AutoScalingGroupName
         Value: !Ref WebhookAutoScalingGroup
-  
+
   NodeUpdateCheckAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1189,7 +1154,7 @@ Resources:
       - SecurityPackagesAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Webhook Node Update Check
@@ -1206,18 +1171,18 @@ Resources:
         Value: !Ref Environment
       - Name: AutoScalingGroupName
         Value: !Ref WebhookAutoScalingGroup
-        
+
   WebhookCodePipelineAlert:
     Type: AWS::Events::Rule
-    Properties: 
+    Properties:
       Description: Alert when CodePipeline Fails
-      EventPattern: 
-        source: 
+      EventPattern:
+        source:
           - "aws.codepipeline"
-        detail-type: 
+        detail-type:
           - "CodePipeline Pipeline Execution State Change"
-        detail: 
-          state: 
+        detail:
+          state:
             - "FAILED"
           pipeline:
             - !Ref WebhookCodePipeline

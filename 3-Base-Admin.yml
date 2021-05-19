@@ -3,92 +3,92 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: Admin Instance - Private Node server that generates IDs, sources, configures database, dispenses secrets for VPN servers. This uses a load balancer/autoscaling for automated AWS SSL Certificate assignment.
 
 Parameters:
-  
+
   Environment:
     Type: String
     Description: Name of the environment to bring up.
-  
+
   # Optional
   UbuntuAMI:
     Type: String
     Description: Override AMI. If not specified, will use RegionMap.
     Default: ""
-  
+
   InstanceType:
     Type: String
     Description: Instance Type
     Default: t3.micro
-  
+
   AllowedIp:
     Type: String
     Description: IP allowed to access Admin
     Default: 192.168.0.0/32
-      
-Conditions: 
-  
+
+Conditions:
+
   OverrideAMI: !Not [!Equals [!Ref UbuntuAMI, ""]]
 
-Mappings: 
+Mappings:
 
-  RegionMap: 
-    us-east-1: 
-      AMI: ami-0735ea082a1534cac
+  RegionMap:
+    us-east-1:
+      AMI: ami-0747bdcabd34c712a
       InstanceType: t3.small
       EbsOptimized: true
     us-east-2:
-      AMI: ami-04c305e118636bc7d
+      AMI: ami-0b9064170e32bde34
       InstanceType: t3.small
       EbsOptimized: true
-    us-west-1: 
-      AMI: ami-0f5113ce7686689e9
+    us-west-1:
+      AMI: ami-07b068f843ec78e72
       InstanceType: t3.small
       EbsOptimized: true
-    us-west-2: 
-      AMI: ami-01e0cf6e025c036e4
+    us-west-2:
+      AMI: ami-090717c950a5c34d3
       InstanceType: t3.small
       EbsOptimized: true
     ap-south-1:
-      AMI: ami-0c6c52d7cf1004825
+      AMI: ami-04bde106886a53080
       InstanceType: t2.small
       EbsOptimized: false
     ap-northeast-2:
-      AMI: ami-0035936492be04cff
+      AMI: ami-0ba5cd124d7a79612
       InstanceType: t2.small
       EbsOptimized: false
     ap-southeast-1:
-      AMI: ami-0d97809b54a5f01ba
+      AMI: ami-055147723b7bca09a
       InstanceType: t3.small
       EbsOptimized: true
     ap-southeast-2:
-      AMI: ami-05162512c82cb460f
+      AMI: ami-0f39d06d145e9bb63
       InstanceType: t2.small
       EbsOptimized: false
     ap-northeast-1:
-      AMI: ami-06317ca3b39714f7e
+      AMI: ami-0fe22bffdec36361c
       InstanceType: t3.small
       EbsOptimized: true
     ca-central-1:
-      AMI: ami-0a5443ed7b0a45901
+      AMI: ami-0e28822503eeedddc
       InstanceType: t3.small
       EbsOptimized: true
     eu-central-1:
-      AMI: ami-0dd0be70cc0d493b7
+      AMI: ami-0b1deee75235aa4bb
       InstanceType: t3.small
       EbsOptimized: true
     eu-west-1:
-      AMI: ami-00b36349b3dba2ec3
+      AMI: ami-0943382e114f188e8
       InstanceType: t3.small
       EbsOptimized: true
     eu-west-2:
-      AMI: ami-06f77073d7dc4c48a
+      AMI: ami-09a56048b08f94cdf
       InstanceType: t3.small
       EbsOptimized: true
     eu-west-3:
-      AMI: ami-0b26151106502588d
+      AMI: ami-06602da18c878f98d
       InstanceType: t2.small
       EbsOptimized: false
     sa-east-1:
-      AMI: ami-0f7c76bfc85e5b4ea
+      AMI: ami-05aa753c043f1dcd3
       InstanceType: t2.small
       EbsOptimized: false
 
@@ -111,7 +111,7 @@ Resources:
   # ==================================================
   # ============= Instance Role ======================
   # ==================================================
-             
+
   AdminRole:
     Type: AWS::IAM::Role
     Properties:
@@ -234,15 +234,15 @@ Resources:
     Properties:
       Roles:
         - !Ref AdminRole
-      
+
   # ==================================================
   # =================== SECURITY GROUPS ==============
   # ==================================================
-  
+
   AdminSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      VpcId: 
+      VpcId:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, VPCId ] ]
       GroupDescription: Database Postgres In
@@ -255,7 +255,7 @@ Resources:
   AdminLoadBalancerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      VpcId: 
+      VpcId:
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, VPCId ] ]
       GroupDescription: HTTPS In
@@ -264,7 +264,7 @@ Resources:
           Value: AdminLoadBalancer
         - Key: Environment
           Value: !Ref Environment
-  
+
   AdminLoadBalancerAdminSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -284,11 +284,11 @@ Resources:
       Description: Allow HTTPS from allowed IP to Admin Load Balancer
       CidrIp: !Ref AllowedIp
       GroupId: !Ref AdminLoadBalancerSecurityGroup
-  
+
   AdminInternalLoadBalancerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      VpcId: 
+      VpcId:
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, VPCId ] ]
       GroupName: !Sub ${Environment}-AdminInternalLoadBalancer
@@ -298,7 +298,7 @@ Resources:
           Value: AdminInternalLoadBalancer
         - Key: Environment
           Value: !Ref Environment
-  
+
   AdminInternalLoadBalancerAdminSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -308,7 +308,7 @@ Resources:
       Description: Allow HTTP from Admin Internal Load Balancer to Admin
       SourceSecurityGroupId: !Ref AdminInternalLoadBalancerSecurityGroup
       GroupId: !Ref AdminSecurityGroup
-          
+
   AdminDatabaseSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -320,7 +320,7 @@ Resources:
       GroupId:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, DatabaseSecurityGroupId ] ]
-  
+
   AdminRedisSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -332,7 +332,7 @@ Resources:
       GroupId:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, RedisSecurityGroupId ] ]
-  
+
   AdminSourcesEFSSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -348,12 +348,12 @@ Resources:
   # ==================================================
   # ================== CODEPIPELINE ==================
   # ==================================================
-  
+
   AdminCodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
       Name: !Join [ '-', [ !Ref Environment, Admin ] ]
-      ServiceRole: 
+      ServiceRole:
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, CodeBuildRoleArn ] ]
       Artifacts:
@@ -382,10 +382,10 @@ Resources:
         Type: CODEPIPELINE
       TimeoutInMinutes: 15
       VpcConfig:
-        SecurityGroupIds: 
+        SecurityGroupIds:
           - Fn::ImportValue:
               !Join [ '-', [ !Ref Environment, TestCodeBuildSecurityGroupId ] ]
-        Subnets: 
+        Subnets:
           - Fn::ImportValue:
               !Join [ '-', [ !Ref Environment, TestPrivateSubnet ] ]
           - Fn::ImportValue:
@@ -396,7 +396,7 @@ Resources:
       Tags:
         - Key: Environment
           Value: !Ref Environment
-  
+
   AdminCodePipeline:
     Type: AWS::CodePipeline::Pipeline
     DependsOn:
@@ -415,7 +415,7 @@ Resources:
             !Join [ '-', [ !Ref Environment, ArtifactBucket ] ]
         Type: S3
       Name: !Join [ '-', [ !Ref Environment, Admin ] ]
-      RoleArn: 
+      RoleArn:
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, CodePipelineRoleArn ] ]
       Stages:
@@ -464,15 +464,15 @@ Resources:
                 DeploymentGroupName: !Ref AdminDeploymentGroup
               InputArtifacts:
                 - Name: CodeBuildArtifact
-  
+
   AdminApplication:
     Type: AWS::CodeDeploy::Application
     Properties:
       ApplicationName: !Join [ '-', [ !Ref Environment, Admin ] ]
 
-  AdminDeploymentGroup: 
+  AdminDeploymentGroup:
     Type: AWS::CodeDeploy::DeploymentGroup
-    Properties: 
+    Properties:
       ApplicationName: !Ref AdminApplication
       AutoScalingGroups:
         - !Ref AdminAutoScalingGroup
@@ -483,14 +483,14 @@ Resources:
       LoadBalancerInfo:
         TargetGroupInfoList:
           - Name: !GetAtt AdminTargetGroup.TargetGroupName
-      ServiceRoleArn: 
+      ServiceRoleArn:
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, CodeDeployRoleArn ] ]
 
   # ==================================================
   # ===================   ADMIN   ====================
   # ==================================================
-  
+
   AdminLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -534,29 +534,29 @@ Resources:
           Value: !Ref Environment
       Type: application
       IpAddressType: ipv4
-  
+
   AdminDNSRecordSet:
     Type: AWS::Route53::RecordSet
-    Properties: 
-      AliasTarget: 
+    Properties:
+      AliasTarget:
         DNSName: !GetAtt AdminLoadBalancer.DNSName
         EvaluateTargetHealth: false
         HostedZoneId: !GetAtt AdminLoadBalancer.CanonicalHostedZoneID
       Comment: !Join [ '-', [ !Ref Environment, AdminLoadBalancer ] ]
       HostedZoneName: !Sub
                         - ${Domain}.
-                        - Domain: 
+                        - Domain:
                             Fn::ImportValue: !Sub ${Environment}-Domain
       Name: !Sub
               - admin.${Domain}
-              - Domain: 
+              - Domain:
                   Fn::ImportValue: !Sub ${Environment}-Domain
       Type: A
-  
+
   AdminInternalDNSRecordSet:
     Type: AWS::Route53::RecordSet
-    Properties: 
-      AliasTarget: 
+    Properties:
+      AliasTarget:
         DNSName: !GetAtt AdminInternalLoadBalancer.DNSName
         EvaluateTargetHealth: false
         HostedZoneId: !GetAtt AdminInternalLoadBalancer.CanonicalHostedZoneID
@@ -569,7 +569,7 @@ Resources:
           - - admin.
             - !Sub ${Environment}-private
       Type: A
-  
+
   AdminTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -598,7 +598,7 @@ Resources:
       VpcId:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, VPCId ] ]
-  
+
   AdminInternalTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -627,10 +627,10 @@ Resources:
       VpcId:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, VPCId ] ]
-  
+
   AdminLoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties: 
+    Properties:
       Certificates:
         - CertificateArn:
             Fn::ImportValue: !Sub ${Environment}-DomainCertificate
@@ -641,7 +641,7 @@ Resources:
       Port: 443
       Protocol: HTTPS
       SslPolicy: ELBSecurityPolicy-TLS-1-2-Ext-2018-06
-  
+
   # AdminLoadBalancerHttpRedirectListener:
   #   Type: AWS::ElasticLoadBalancingV2::Listener
   #   Properties:
@@ -654,17 +654,17 @@ Resources:
   #     LoadBalancerArn: !Ref AdminLoadBalancer
   #     Port: 80
   #     Protocol: HTTP
-  
+
   AdminInternalLoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties: 
+    Properties:
       DefaultActions:
         - TargetGroupArn: !Ref AdminInternalTargetGroup
           Type: forward
       LoadBalancerArn: !Ref AdminInternalLoadBalancer
       Port: 80
       Protocol: HTTP
-  
+
   AdminAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     CreationPolicy:
@@ -705,7 +705,7 @@ Resources:
       TargetGroupARNs:
         - !Ref AdminTargetGroup
         - !Ref AdminInternalTargetGroup
-  
+
   AdminLaunchConfiguration:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
@@ -727,32 +727,31 @@ Resources:
         "Fn::Base64":
           !Sub |
             #!/bin/bash -ex
-            # Install Updates and Python SetupTools (for easy_install)
+            # Install Updates and Python3
             export DEBIAN_FRONTEND=noninteractive
             apt-get update && apt-get dist-upgrade -yq
-            apt-get -yq install python-setuptools
+            apt-get -yq install python3.7-distutils python3-pip python3 python3-setuptools
             # Install CloudFormation Bootstrap
-            easy_install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz
-            ln -s /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup /etc/init.d/cfn-hup
-            chmod +x /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup
-            update-rc.d cfn-hup defaults
+            wget https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz
+            tar -xvzf aws-cfn-bootstrap-py3-latest.tar.gz
+            cd aws-cfn-bootstrap-2.0
+            python3 setup.py install
             # Run CloudFormation Init
             cfn-init -c default --stack ${AWS::StackName} --resource AdminLaunchConfiguration --region ${AWS::Region}
             # Signal success to CloudFormation on reboot
-            echo "@reboot root /usr/local/bin/cfn-signal --success true --stack ${AWS::StackName} --resource AdminAutoScalingGroup --region ${AWS::Region} 2>&1 | /usr/bin/logger -t cfn_success" >> /etc/cron.d/success_on_reboot            
+            echo "@reboot root /usr/local/bin/cfn-signal --success true --stack ${AWS::StackName} --resource AdminAutoScalingGroup --region ${AWS::Region} 2>&1 | /usr/bin/logger -t cfn_success" >> /etc/cron.d/success_on_reboot
             echo "@reboot root /home/ubuntu/install-codedeploy.sh 2>&1 | /usr/bin/logger -t install_codedeploy" >> /etc/cron.d/install_codedeploy_on_reboot
             # Reboot to pick up latest patches
             reboot
     Metadata:
       AWS::CloudFormation::Init:
-        configSets: 
+        configSets:
           default:
             - "unattended-upgrades"
             - "enable-swap"
             - "install-pip-and-curl-and-ruby"
             - "set-region-and-environment"
             - "install-aws-cloudwatch-and-cli"
-            - "setup-cfn-hup"
             - "install-node"
             - "install-efs-requirements"
             - "mount-efs-sources"
@@ -822,7 +821,7 @@ Resources:
             3_set_git_branch:
               command: !Sub
                 - echo GIT_BRANCH=${Branch} >> /etc/environment
-                - Branch: 
+                - Branch:
                     Fn::ImportValue:
                       !Join [ '-', [ !Ref Environment, GitBranch ] ]
         install-aws-cloudwatch-and-cli:
@@ -871,11 +870,6 @@ Resources:
                             "file_path": "/var/log/cfn-init-cmd.log",
                             "log_group_name": "${Environment}-Admin",
                             "log_stream_name": "{instance_id}-cfn-init-cmd"
-                          },
-                          {
-                            "file_path": "/var/log/cfn-hup.log",
-                            "log_group_name": "${Environment}-Admin",
-                            "log_stream_name": "{instance_id}-cfn-hup"
                           },
                           {
                             "file_path": "/var/log/amazon/ssm/amazon-ssm-agent.log",
@@ -984,35 +978,6 @@ Resources:
                 cd /home/ubuntu/cloudwatch_agent
                 ./install.sh
                 /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/home/ubuntu/cloudwatch.config -s
-        setup-cfn-hup:
-           files:
-             '/etc/cfn/cfn-hup.conf':
-               content: !Sub |
-                 [main]
-                 stack=${AWS::StackId}
-                 region=${AWS::Region}
-                 interval=1
-               mode: '000400'
-               owner: root
-               group: root
-             '/etc/cfn/hooks.d/cfn-auto-reloader.conf':
-               content: !Sub |
-                 [cfn-auto-reloader-hook]
-                 triggers=post.update
-                 path=Resources.AdminLaunchConfiguration.Metadata.AWS::CloudFormation::Init
-                 action=cfn-init --verbose --stack=${AWS::StackName} --region=${AWS::Region} --resource=AdminLaunchConfiguration --configsets updateable
-                 runas=root
-               mode: '000400'
-               owner: root
-               group: root
-           services:
-             sysvinit:
-               cfn-hup:
-                 enabled: true
-                 ensureRunning: true
-                 files:
-                 - '/etc/cfn/cfn-hup.conf'
-                 - '/etc/cfn/hooks.d/cfn-auto-reloader.conf'
         install-efs-requirements:
           packages:
             apt:
@@ -1035,18 +1000,18 @@ Resources:
             1_mount_efs:
               command: !Sub
                 - mount -t efs -o tls ${SourcesEFSId}:/ /home/node/sources
-                - SourcesEFSId: 
+                - SourcesEFSId:
                     Fn::ImportValue: !Sub ${Environment}-SourcesEFSId
             2_verify_mounted:
               command: if grep -qs '/home/node/sources ' /proc/mounts; then echo "Sources Mounted"; else echo "Error Mounting Source"; exit 1; fi
             3_touch_MOUNTED:
               command: touch /home/node/sources/MOUNTED
             4_change_ownership:
-              command: chown node:node /home/node/sources
+              command: chown -R node:node /home/node/sources
             5_persist_efs_on_reboot:
               command: !Sub
                 - echo "${SourcesEFSId}:/ /home/node/sources  efs tls,_netdev  0 0" >> /etc/fstab
-                - SourcesEFSId: 
+                - SourcesEFSId:
                     Fn::ImportValue: !Sub ${Environment}-SourcesEFSId
         install-node:
           commands:
@@ -1061,7 +1026,7 @@ Resources:
                         --home /home/node \
                         node
             1_setup:
-              command: curl -sL https://deb.nodesource.com/setup_10.x | bash -
+              command: curl -sL https://deb.nodesource.com/setup_12.x | bash -
             2_install:
               command: apt-get install -yq nodejs
             3_update_npm:
@@ -1093,7 +1058,7 @@ Resources:
     Type: AWS::Logs::SubscriptionFilter
     DependsOn:
       - AdminAutoScalingGroup
-    Properties: 
+    Properties:
       DestinationArn:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, ErrorEmailerFunctionArn ] ]
@@ -1103,14 +1068,14 @@ Resources:
   # ==================================================
   # ================= CLOUDWATCH ALARMS ==============
   # ==================================================
-    
+
   AdminTargetGroupUnhealthyHostAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
       - AdminAutoScalingGroup
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Admin Unhealthy Host
@@ -1127,7 +1092,7 @@ Resources:
         Value: !GetAtt AdminTargetGroup.TargetGroupFullName
       - Name: LoadBalancer
         Value: !GetAtt AdminLoadBalancer.LoadBalancerFullName
-  
+
   AdminTargetGroupHealthyHostAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1135,7 +1100,7 @@ Resources:
       - AdminTargetGroupUnhealthyHostAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Admin Healthy Host
@@ -1152,7 +1117,7 @@ Resources:
         Value: !GetAtt AdminTargetGroup.TargetGroupFullName
       - Name: LoadBalancer
         Value: !GetAtt AdminLoadBalancer.LoadBalancerFullName
-  
+
   AdminTargetGroupLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1160,7 +1125,7 @@ Resources:
       - AdminTargetGroupHealthyHostAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Admin Latency
@@ -1177,7 +1142,7 @@ Resources:
         Value: !GetAtt AdminTargetGroup.TargetGroupFullName
       - Name: LoadBalancer
         Value: !GetAtt AdminLoadBalancer.LoadBalancerFullName
-  
+
   CpuAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1185,7 +1150,7 @@ Resources:
       - AdminTargetGroupLatencyAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Admin CPU
@@ -1200,7 +1165,7 @@ Resources:
       Dimensions:
       - Name: AutoScalingGroupName
         Value: !Ref AdminAutoScalingGroup
-        
+
   LowMemoryAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1208,7 +1173,7 @@ Resources:
       - AdminTargetGroupLatencyAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Admin Low Memory
@@ -1223,7 +1188,7 @@ Resources:
       Dimensions:
       - Name: AutoScalingGroupName
         Value: !Ref AdminAutoScalingGroup
-  
+
   SwapUsageAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1231,7 +1196,7 @@ Resources:
       - LowMemoryAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Admin Swap Usage
@@ -1246,7 +1211,7 @@ Resources:
       Dimensions:
       - Name: AutoScalingGroupName
         Value: !Ref AdminAutoScalingGroup
-  
+
   DiskUsageAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1254,7 +1219,7 @@ Resources:
       - SwapUsageAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Admin Disk Usage
@@ -1269,7 +1234,7 @@ Resources:
       Dimensions:
       - Name: AutoScalingGroupName
         Value: !Ref AdminAutoScalingGroup
-        
+
   UpgradeCheckAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1277,7 +1242,7 @@ Resources:
       - DiskUsageAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Admin Upgrade Check
@@ -1302,7 +1267,7 @@ Resources:
       - UpgradeCheckAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Admin Restart Check
@@ -1344,7 +1309,7 @@ Resources:
         Value: !Ref Environment
       - Name: AutoScalingGroupName
         Value: !Ref AdminAutoScalingGroup
-        
+
   NodeUpdateCheckAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1352,7 +1317,7 @@ Resources:
       - SecurityPackagesAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Admin Node Update Check
@@ -1369,18 +1334,18 @@ Resources:
         Value: !Ref Environment
       - Name: AutoScalingGroupName
         Value: !Ref AdminAutoScalingGroup
-        
+
   AdminCodePipelineAlert:
     Type: AWS::Events::Rule
-    Properties: 
+    Properties:
       Description: Alert when CodePipeline Fails
-      EventPattern: 
-        source: 
+      EventPattern:
+        source:
           - "aws.codepipeline"
-        detail-type: 
+        detail-type:
           - "CodePipeline Pipeline Execution State Change"
-        detail: 
-          state: 
+        detail:
+          state:
             - "FAILED"
           pipeline:
             - !Ref AdminCodePipeline

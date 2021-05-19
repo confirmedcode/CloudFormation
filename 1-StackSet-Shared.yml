@@ -3,29 +3,29 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: Shared functions for both Base and VPN-Base
 
 Parameters:
-  
+
   Environment:
     Type: String
     Description: Name of the environment to bring up.
 
   GitBranch:
     Type: String
-  
+
   Domain:
     Type: String
-    
+
   LockdownDomain:
     Type: String
-  
+
   LockdownNewDomain:
     Type: String
 
   PrivacyReviewDomain:
     Type: String
 
-Mappings: 
-  
-  RegionMapping: 
+Mappings:
+
+  RegionMapping:
     us-east-1:
       Subdomain: us-east
       Cidr: 172.16.0.0/17
@@ -73,14 +73,14 @@ Mappings:
       Cidr: 172.23.0.0/17
 
 Resources:
-  
+
   # ==================================================
   # =========== Shared SSM Managed Policy ============
-  # ==================================================  
-  
+  # ==================================================
+
   SSMManagedPolicy:
     Type: AWS::IAM::ManagedPolicy
-    Properties: 
+    Properties:
       Description: Trimmed version of AmazonEC2RoleforSSM
       PolicyDocument:
         Version: 2012-10-17
@@ -178,18 +178,18 @@ Resources:
           Resource:
             - !Sub arn:aws:s3:::aws-ssm-${AWS::Region}/*
             - !Sub arn:aws:s3:::${AWS::Region}-birdwatcher-prod/*
-            - !Join [ '', [ !GetAtt ArtifactBucket.Arn, "/*"] ] 
+            - !Join [ '', [ !GetAtt ArtifactBucket.Arn, "/*"] ]
             - !Sub arn:aws:s3:::aws-codedeploy-${AWS::Region}/*
             - !GetAtt CodePipelineKey.Arn
         - Effect: Allow
           Action:
             - autoscaling:DescribeAutoScalingInstances
           Resource: "*"
-  
+
   # ==================================================
   # ================== S3 BUCKETS ====================
   # ==================================================
-  
+
   ArtifactBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
@@ -206,7 +206,7 @@ Resources:
   # ==================================================
   # ================ PARAMETER STORE =================
   # ==================================================
-  
+
   DomainParameter:
     Type: AWS::SSM::Parameter
     Properties:
@@ -220,7 +220,7 @@ Resources:
       Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "DOMAIN" ] ]
       Type: String
       Value: !Ref Domain
-  
+
   LockdownDomainParameter:
     Type: AWS::SSM::Parameter
     Properties:
@@ -234,7 +234,7 @@ Resources:
       Name: !Join [ '/', [ "", !Ref Environment, "TEST", "COMMON", "LD_DOMAIN" ] ]
       Type: String
       Value: !Ref LockdownDomain
-  
+
   LockdownNewDomainParameter:
     Type: AWS::SSM::Parameter
     Properties:
@@ -267,7 +267,7 @@ Resources:
   # ==================================================
   # ============ CODEPIPELINE ROLES ==================
   # ==================================================
-  
+
   CodePipelineKey:
     Type: AWS::KMS::Key
     Properties:
@@ -277,7 +277,7 @@ Resources:
       KeyPolicy:
         Version: "2012-10-17"
         Id: "codepipeline-key"
-        Statement: 
+        Statement:
           - Sid: "Allow encryption, decryption using the key"
             Effect: Allow
             Principal:
@@ -305,7 +305,7 @@ Resources:
             Action:
               - kms:*
             Resource: "*"
-   
+
   CodeBuildRole:
     Type: AWS::IAM::Role
     Properties:
@@ -314,9 +314,9 @@ Resources:
         Statement:
         - Effect: Allow
           Principal:
-            Service: 
+            Service:
               - codebuild.amazonaws.com
-          Action: 
+          Action:
             - sts:AssumeRole
       Path: /
       Policies:
@@ -492,7 +492,7 @@ Resources:
                 - s3:GetObjectVersion
               Resource:
                 - !Join [ '', [ !GetAtt ArtifactBucket.Arn, "/*"] ]
-          
+
   CodePipelineRole:
     Type: AWS::IAM::Role
     Properties:
@@ -503,7 +503,7 @@ Resources:
           Principal:
             Service:
               - codepipeline.amazonaws.com
-          Action: 
+          Action:
             - sts:AssumeRole
       Path: /
       Policies:
@@ -586,13 +586,13 @@ Resources:
   # ==================================================
   # ======== PARAMETER STORE SECRET FUNCTION =========
   # ==================================================
-  
+
   ParameterStoreFunction:
     Type: AWS::Lambda::Function
     Properties:
       Handler: index.handler
       Role: !GetAtt ParameterStoreFunctionRole.Arn
-      Runtime: nodejs10.x
+      Runtime: nodejs12.x
       Timeout: 60
       Tags:
         - Key: Name
@@ -602,13 +602,13 @@ Resources:
           var response = require('./cfn-response');
           var aws = require('aws-sdk');
           var crypto = require('crypto');
-          
+
           function generateRandomString(length) {
             return crypto.randomBytes(Math.ceil(length / 2))
           	.toString('hex')
           	.slice(0, length);
           };
-          
+
           exports.handler = function(event, context) {
             var ssm = new aws.SSM();
             var props = event.ResourceProperties;
@@ -617,10 +617,10 @@ Resources:
             var region = splitStackArn[3];
             var accountId = splitStackArn[4];
             var stackName = splitStackArn[5].split("/")[1];
-            
+
             var paramName = props.Name;
             var paramArn = "arn:aws:ssm:" + region + ":" + accountId + ":parameter" + paramName;
-            
+
             var paramValue = props.Value;
             if (props.GenerateRandomString == "true") {
               paramValue = generateRandomString(parseInt(props.RandomStringLength))
@@ -632,13 +632,13 @@ Resources:
               GenerateRandomString: props.GenerateRandomString,
               RandomStringLength: props.RandomStringLength
             }
-            
+
             var callback = function(err, resp) {
               if (err) {
-                response.send(event, context, response.FAILED, cfnResponseData, paramArn, true);            
+                response.send(event, context, response.FAILED, cfnResponseData, paramArn, true);
               }
               else {
-                response.send(event, context, response.SUCCESS, cfnResponseData, paramArn, true);            
+                response.send(event, context, response.SUCCESS, cfnResponseData, paramArn, true);
               }
             };
             if (event.RequestType == "Create") {
@@ -675,7 +675,7 @@ Resources:
               ssm.deleteParameter({ Name: paramName }, callback);
             }
           };
-          
+
   ParameterStoreFunctionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -709,19 +709,19 @@ Resources:
                   - kms:Encrypt
                 Resource:
                   - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/*
-  
+
   # ==================================================
   # ============== CLOUDWATCH ALARM EMAIL ============
   # ==================================================
-  
+
   CloudWatchAlarmEmailerTopic:
     Type: AWS::SNS::Topic
-    Properties: 
+    Properties:
       DisplayName: Admin Alerts
       Subscription:
         - Endpoint: !Sub admin@${Domain}
           Protocol: email
-  
+
   AllowSnsTopicPublishPolicy:
     Type: AWS::SNS::TopicPolicy
     Properties:
@@ -755,11 +755,11 @@ Resources:
               AWS:SourceOwner: !Ref AWS::AccountId
       Topics:
         - !Ref CloudWatchAlarmEmailerTopic
-        
+
   # ==================================================
   # ============ APPLICATION ERROR EMAILER ===========
   # ==================================================
-  
+
   ErrorEmailerFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -773,11 +773,11 @@ Resources:
               if (e) { context.fail(e); }
               else {
                 result = JSON.parse(result.toString('ascii'));
-                
+
                 var sns = new aws.SNS();
                 var params = {
-                    Message: JSON.stringify(result, null, 2), 
-                    Subject: "[ERROR] Error Log Attached", 
+                    Message: JSON.stringify(result, null, 2),
+                    Subject: "[ERROR] Error Log Attached",
                     TopicArn: "${CloudWatchAlarmEmailerTopic}"
                 };
                 sns.publish(params, context.done);
@@ -786,7 +786,7 @@ Resources:
           };
       Handler: index.handler
       Role: !GetAtt ErrorEmailerFunctionRole.Arn
-      Runtime: nodejs10.x
+      Runtime: nodejs12.x
       Timeout: 10
 
   ErrorEmailerFunctionRole:
@@ -819,7 +819,7 @@ Resources:
             Action:
               - sns:Publish
             Resource: !Ref CloudWatchAlarmEmailerTopic
-  
+
   ErrorEmailerCloudWatchPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -831,7 +831,7 @@ Resources:
   # ==================================================
   # ============ OS UPDATES/RESTART SCRIPT ===========
   # ==================================================
-  
+
   OsUpdatesStatusUpdaterDocument:
     Type: AWS::SSM::Document
     Properties:
@@ -844,46 +844,46 @@ Resources:
           name: runShellScript
           inputs:
             runCommand:
-              - !Sub | 
+              - !Sub |
                 set -ex
                 cat <<EOT > /home/ubuntu/os_updates_status.sh
                   printf "Setting environmental variables\n"
                   export AWS_DEFAULT_REGION=${AWS::Region}
-                  
+
                   printf "Getting instance ID and AutoScaling Group Name\n"
                   INSTANCE_ID=\$(ec2metadata --instance-id)
                   AUTOSCALING_GROUP_NAME=\$(aws autoscaling describe-auto-scaling-instances --instance-ids=\$INSTANCE_ID --query 'AutoScalingInstances[0]'.AutoScalingGroupName)
-                  
+
                   printf "Getting OS Updates Stats\n"
-                  
+
                   CURRENT_TIME=\$(date +%s)
                   LAST_UPGRADE_CHECK_TIME=\$(stat -c "%Y" /var/lib/apt/periodic/update-success-stamp)
                   SECONDS_SINCE_LAST_UPGRADE_CHECK=\$((\$CURRENT_TIME-\$LAST_UPGRADE_CHECK_TIME))
                   printf "Seconds since last upgrade check: \$SECONDS_SINCE_LAST_UPGRADE_CHECK\n"
-                  
+
                   UPGRADABLE_SECURITY_PACKAGES=\$(apt-get upgrade -s | grep -i xenial-security)
-                  NUM_UPGRADABLE_SECURITY_PACKAGES=\$(printf "\$UPGRADABLE_SECURITY_PACKAGES" | wc -l)   
+                  NUM_UPGRADABLE_SECURITY_PACKAGES=\$(printf "\$UPGRADABLE_SECURITY_PACKAGES" | wc -l)
                   printf "Upgradable Security Packages:\n \$UPGRADABLE_SECURITY_PACKAGES \n"
-                  
+
                   PACKAGES_REQUIRE_RESTART=\$(cat /var/run/reboot-required.pkgs)
                   NUM_PACKAGES_REQUIRE_RESTART=\$(printf "\$PACKAGES_REQUIRE_RESTART" | wc -l)
                   printf "Reboot-required packages:\n \$PACKAGES_REQUIRE_RESTART \n"
-                  
+
                   if test -e "/usr/local/bin/node";
                   then
                     CURRENT_NODE_VERSION=\$(/usr/local/bin/node --version | cut -d v -f2)
                   else
                     CURRENT_NODE_VERSION=\$(/usr/bin/node --version | cut -d v -f2)
                   fi
-                  
+
                   echo "\$CURRENT_NODE_VERSION" > /tmp/CURRENT_NODE_VERSION
-                  NEXT_MAJOR_VERSION=11
+                  NEXT_MAJOR_VERSION=13
                   LATEST_LTS_NODE_VERSION=\$(npm show node@">=\$CURRENT_NODE_VERSION <\$NEXT_MAJOR_VERSION" version)
                   echo "\$LATEST_LTS_NODE_VERSION" > /tmp/LATEST_LTS_NODE_VERSION
                   printf "Current Vs Latest LTS Node Version:\n \$CURRENT_NODE_VERSION vs \$LATEST_LTS_NODE_VERSION \n"
-                  
+
                   printf "Publishing to CloudWatch\n"
-                                    
+
                   aws cloudwatch put-metric-data --metric-name "Last Upgrade Check Seconds" --namespace CVPN/Shared --unit Seconds --value \$SECONDS_SINCE_LAST_UPGRADE_CHECK --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
                   aws cloudwatch put-metric-data --metric-name "# Security Packages Upgradable" --namespace CVPN/Shared --unit Count --value \$NUM_UPGRADABLE_SECURITY_PACKAGES --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
                 	aws cloudwatch put-metric-data --metric-name "# Packages Require Restart" --namespace CVPN/Shared --unit Count --value \$NUM_PACKAGES_REQUIRE_RESTART --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
@@ -893,9 +893,9 @@ Resources:
                   else
                   	aws cloudwatch put-metric-data --metric-name "NodeJS Outdated" --namespace CVPN/Shared --unit Count --value 1 --dimensions Environment=${Environment},InstanceId=\$INSTANCE_ID
                   fi
-                  
+
                   if [ \$AUTOSCALING_GROUP_NAME != 'null' ];
-                  then 
+                  then
                     aws cloudwatch put-metric-data --metric-name "Last Upgrade Check Seconds" --namespace CVPN/Shared --unit Seconds --value \$SECONDS_SINCE_LAST_UPGRADE_CHECK --dimensions Environment=${Environment},AutoScalingGroupName=\$AUTOSCALING_GROUP_NAME
                     aws cloudwatch put-metric-data --metric-name "# Security Packages Upgradable" --namespace CVPN/Shared --unit Count --value \$NUM_UPGRADABLE_SECURITY_PACKAGES --dimensions Environment=${Environment},AutoScalingGroupName=\$AUTOSCALING_GROUP_NAME
                   	aws cloudwatch put-metric-data --metric-name "# Packages Require Restart" --namespace CVPN/Shared --unit Count --value \$NUM_PACKAGES_REQUIRE_RESTART --dimensions Environment=${Environment},AutoScalingGroupName=\$AUTOSCALING_GROUP_NAME
@@ -914,10 +914,10 @@ Resources:
                 chmod 0644 /etc/cron.d/os_updates_status
                 cd /home/ubuntu
                 ./os_updates_status.sh 2>&1 | /usr/bin/logger -t os_updates_status
-                
+
   OsUpdatesStatusUpdaterAssociation:
     Type: AWS::SSM::Association
-    Properties: 
+    Properties:
       AssociationName: !Join [ '-', [ !Ref Environment, Os-Updates-Status-Updater ] ]
       DocumentVersion: $LATEST
       Name: !Ref OsUpdatesStatusUpdaterDocument
@@ -925,11 +925,11 @@ Resources:
         - Key: tag:Environment
           Values:
             - !Ref Environment
-  
+
   # ==================================================
   # ===================  VPN VPC  ====================
   # ==================================================
-  
+
   VpnVPC:
     Type: AWS::EC2::VPC
     Properties:

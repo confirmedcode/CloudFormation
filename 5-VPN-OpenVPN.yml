@@ -4,116 +4,116 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: VPN instance in this region
 
 Parameters:
-  
+
   Environment:
     Type: String
     Description: Name of the environment to bring up.
-    
+
   SourceId:
-    Type: String 
-  
+    Type: String
+
   Date:
     Type: String
     Description: MMDDYY date of last machine bringup
-    
+
   CertAccessSecret:
     Type: String
     NoEcho: true
-  
+
   # Optional
   UbuntuAMI:
     Type: String
     Description: AMI
     Default: ""
-  
+
   InstanceType:
     Type: String
     Description: Instance Type
     Default: t3.small
 
-Conditions: 
-  
+Conditions:
+
   OverrideInstanceType: !Not [!Equals [!Ref InstanceType, ""]]
-  
+
   OverrideAMI: !Not [!Equals [!Ref UbuntuAMI, ""]]
 
-Mappings: 
+Mappings:
 
-  RegionMap: 
-    us-east-1: 
-      AMI: ami-0735ea082a1534cac
+  RegionMap:
+    us-east-1:
+      AMI: ami-0747bdcabd34c712a
       InstanceType: t3.small
       EbsOptimized: true
       FsDevice: nvme0n1p1
     us-east-2:
-      AMI: ami-04c305e118636bc7d
+      AMI: ami-0b9064170e32bde34
       InstanceType: t3.small
       EbsOptimized: true
       FsDevice: nvme0n1p1
-    us-west-1: 
-      AMI: ami-0f5113ce7686689e9
+    us-west-1:
+      AMI: ami-07b068f843ec78e72
       InstanceType: t3.small
       EbsOptimized: true
       FsDevice: nvme0n1p1
-    us-west-2: 
-      AMI: ami-01e0cf6e025c036e4
+    us-west-2:
+      AMI: ami-090717c950a5c34d3
       InstanceType: t3.small
       EbsOptimized: true
       FsDevice: nvme0n1p1
     ap-south-1:
-      AMI: ami-0c6c52d7cf1004825
-      InstanceType: t2.small # t3 not available
+      AMI: ami-04bde106886a53080
+      InstanceType: t2.small
       EbsOptimized: false
       FsDevice: xvda1
     ap-northeast-2:
-      AMI: ami-0035936492be04cff
-      InstanceType: t3.small
-      EbsOptimized: true
-      FsDevice: nvme0n1p1
+      AMI: ami-0ba5cd124d7a79612
+      InstanceType: t2.small
+      EbsOptimized: false
+      FsDevice: xvda1
     ap-southeast-1:
-      AMI: ami-0d97809b54a5f01ba
+      AMI: ami-055147723b7bca09a
       InstanceType: t3.small
       EbsOptimized: true
       FsDevice: nvme0n1p1
     ap-southeast-2:
-      AMI: ami-05162512c82cb460f
-      InstanceType: t2.small # t3 not available in first availability zone
+      AMI: ami-0f39d06d145e9bb63
+      InstanceType: t2.small
       EbsOptimized: false
-      FsDevice: xvda1
+      FsDevice: nvme0n1p1
     ap-northeast-1:
-      AMI: ami-06317ca3b39714f7e
+      AMI: ami-0fe22bffdec36361c
       InstanceType: t3.small
       EbsOptimized: true
       FsDevice: nvme0n1p1
     ca-central-1:
-      AMI: ami-0a5443ed7b0a45901
+      AMI: ami-0e28822503eeedddc
       InstanceType: t3.small
       EbsOptimized: true
       FsDevice: nvme0n1p1
     eu-central-1:
-      AMI: ami-0dd0be70cc0d493b7
+      AMI: ami-0b1deee75235aa4bb
       InstanceType: t3.small
       EbsOptimized: true
       FsDevice: nvme0n1p1
     eu-west-1:
-      AMI: ami-00b36349b3dba2ec3
+      AMI: ami-0943382e114f188e8
       InstanceType: t3.small
       EbsOptimized: true
       FsDevice: nvme0n1p1
     eu-west-2:
-      AMI: ami-06f77073d7dc4c48a
+      AMI: ami-09a56048b08f94cdf
       InstanceType: t3.small
       EbsOptimized: true
       FsDevice: nvme0n1p1
     eu-west-3:
-      AMI: ami-0b26151106502588d
-      InstanceType: t3.small
-      EbsOptimized: true
-      FsDevice: nvme0n1p1
+      AMI: ami-06602da18c878f98d
+      InstanceType: t2.small
+      EbsOptimized: false
+      FsDevice: xvda1
     sa-east-1:
-      AMI: ami-0f7c76bfc85e5b4ea
-      InstanceType: t3.small
-      EbsOptimized: true
+      AMI: ami-05aa753c043f1dcd3
+      InstanceType: t2.small
+      EbsOptimized: false
       FsDevice: nvme0n1p1
 
 Resources:
@@ -136,7 +136,7 @@ Resources:
       - DeleteOnTermination: true
         Description: Primary network interface
         DeviceIndex: 0
-        SubnetId: 
+        SubnetId:
           Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, VpnSubnetId ] ]
         GroupSet:
@@ -155,27 +155,26 @@ Resources:
         "Fn::Base64":
           !Sub |
             #!/bin/bash -ex
-            # Install Updates and Python SetupTools (for easy_install)
+            # Install Updates and Python3
             export DEBIAN_FRONTEND=noninteractive
             apt-get update && apt-get dist-upgrade -yq
-            apt-get -yq install python-setuptools
+            apt-get -yq install python3.7-distutils python3-pip python3 python3-setuptools
             # Install CloudFormation Bootstrap
-            easy_install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz
-            ln -s /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup /etc/init.d/cfn-hup
-            chmod +x /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup
-            update-rc.d cfn-hup defaults
+            wget https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz
+            tar -xvzf aws-cfn-bootstrap-py3-latest.tar.gz
+            cd aws-cfn-bootstrap-2.0
+            python3 setup.py install
             # Run CloudFormation Init
             cfn-init -c default --stack ${AWS::StackName} --resource VpnInstance --region ${AWS::Region}
             # Signal success to CloudFormation on reboot
-            echo "@reboot root /usr/local/bin/cfn-signal --success true --stack ${AWS::StackName} --resource VpnInstance --region ${AWS::Region} 2>&1 | /usr/bin/logger -t cfn_success" >> /etc/cron.d/success_on_reboot            
+            echo "@reboot root /usr/local/bin/cfn-signal --success true --stack ${AWS::StackName} --resource VpnInstance --region ${AWS::Region} 2>&1 | /usr/bin/logger -t cfn_success" >> /etc/cron.d/success_on_reboot
             # Reboot to pick up latest patches
             reboot
     Metadata:
       AWS::CloudFormation::Init:
-        configSets: 
+        configSets:
           default:
             - "unattended-upgrades"
-            - "setup-cfn-hup"
             - "set-region-and-environment"
             - "install-aws-cloudwatch-and-cli"
             - "enable-swap"
@@ -263,35 +262,6 @@ Resources:
               mode: '000644'
               owner: root
               group: root
-        setup-cfn-hup:
-           files:
-             '/etc/cfn/cfn-hup.conf':
-               content: !Sub |
-                 [main]
-                 stack=${AWS::StackId}
-                 region=${AWS::Region}
-                 interval=1
-               mode: '000400'
-               owner: root
-               group: root
-             '/etc/cfn/hooks.d/cfn-auto-reloader.conf':
-               content: !Sub |
-                 [cfn-auto-reloader-hook]
-                 triggers=post.update
-                 path=Resources.VpnInstance.Metadata.AWS::CloudFormation::Init
-                 action=cfn-init --verbose --stack=${AWS::StackName} --region=${AWS::Region} --resource=VpnInstance --configsets updateable
-                 runas=root
-               mode: '000400'
-               owner: root
-               group: root
-           services:
-             sysvinit:
-               cfn-hup:
-                 enabled: true
-                 ensureRunning: true
-                 files:
-                 - '/etc/cfn/cfn-hup.conf'
-                 - '/etc/cfn/hooks.d/cfn-auto-reloader.conf'
         set-region-and-environment:
           commands:
             0_set_region:
@@ -331,11 +301,6 @@ Resources:
                             "file_path": "/var/log/amazon/ssm/amazon-ssm-agent.log",
                             "log_group_name": "${Environment}-VPN",
                             "log_stream_name": "${AWS::StackName}-{instance_id}-aws-ssm"
-                          },
-                          {
-                            "file_path": "/var/log/cfn-hup.log",
-                            "log_group_name": "${Environment}-VPN",
-                            "log_stream_name": "${AWS::StackName}-{instance_id}-cfn-hup"
                           },
                           {
                             "file_path": "/var/log/cfn-init.log",
@@ -540,15 +505,15 @@ Resources:
                 ifdown lo:100 && ifup lo:100
                 sysctl -p
                 echo 1 > /proc/sys/net/ipv4/route/flush
-          services: 
-            sysvinit: 
-              netfilter-persistent:   
+          services:
+            sysvinit:
+              netfilter-persistent:
                 ensureRunning: true
                 enabled: true
         install-node:
           commands:
             1_setup:
-              command: curl -sL https://deb.nodesource.com/setup_10.x | bash -
+              command: curl -sL https://deb.nodesource.com/setup_12.x | bash -
             2_install:
               command: apt-get install -yq nodejs
             3_update_npm:
@@ -989,7 +954,7 @@ Resources:
                 - Environment: !Ref Environment
               mode: '000644'
               owner: root
-              group: root 
+              group: root
             '/etc/openvpn/server.conf':
               content: !Sub
                 - |
@@ -1043,7 +1008,7 @@ Resources:
                   -----END OpenVPN Static key V1-----
                   </tls-crypt>
                 - SourceId: !Ref SourceId
-                  Domain: 
+                  Domain:
                     Fn::ImportValue:
                       !Sub ${Environment}-Domain
               mode: '000644'
@@ -1117,7 +1082,7 @@ Resources:
           commands:
             0_get_from_admin:
               command: !Sub
-                - > 
+                - >
                     curl --header "Content-Type: application/json"
                     --request POST
                     --data '{"secret":"${Secret}","id":"${SourceId}"}'
@@ -1136,7 +1101,7 @@ Resources:
                 - Secret: !Ref CertAccessSecret
                   SourceId: !Ref SourceId
                   Environment: !Ref Environment
-                  Domain: 
+                  Domain:
                     Fn::ImportValue:
                       !Sub ${Environment}-Domain
             1_set_permissions:
@@ -1149,7 +1114,7 @@ Resources:
                   chown root:root /etc/openvpn/keys/www-${SourceId}.${Domain}.crt
                   chown root:root /etc/openvpn/keys/ca.crt
                 - SourceId: !Ref SourceId
-                  Domain: 
+                  Domain:
                     Fn::ImportValue:
                       !Sub ${Environment}-Domain
         start-openvpn:
@@ -1183,7 +1148,7 @@ Resources:
       - VpnInstance
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | VPN Instance Status Check | ${VpnInstance}
@@ -1198,7 +1163,7 @@ Resources:
       Dimensions:
       - Name: InstanceId
         Value: !Ref VpnInstance
-  
+
   VpnInstanceCpuAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1206,7 +1171,7 @@ Resources:
       - VpnInstanceStatusCheckAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | VPN CPU | ${VpnInstance}
@@ -1229,7 +1194,7 @@ Resources:
       - VpnInstanceCpuAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | VPN Down | ${VpnInstance}
@@ -1248,7 +1213,7 @@ Resources:
         Value: !Ref InstanceType
       - Name: Environment
         Value: !Ref Environment
-  
+
   VpnInstanceHighIPv4ConnectionsAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1256,7 +1221,7 @@ Resources:
       - VpnInstanceFailedVpnStatusAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | VPN High IPv4 Clients | ${VpnInstance}
@@ -1275,7 +1240,7 @@ Resources:
         Value: !Ref InstanceType
       - Name: Environment
         Value: !Ref Environment
-  
+
   VpnInstanceHighPingAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1283,7 +1248,7 @@ Resources:
       - VpnInstanceHighIPv4ConnectionsAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | VPN High Ping | ${VpnInstance}
@@ -1302,7 +1267,7 @@ Resources:
         Value: !Ref InstanceType
       - Name: Environment
         Value: !Ref Environment
-  
+
   VpnInstancePingTimeoutAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1310,7 +1275,7 @@ Resources:
       - VpnInstanceHighPingAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | VPN Ping Timeout | ${VpnInstance}
@@ -1329,7 +1294,7 @@ Resources:
         Value: !Ref InstanceType
       - Name: Environment
         Value: !Ref Environment
-  
+
   VpnInstanceLowMemoryAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1337,7 +1302,7 @@ Resources:
       - VpnInstancePingTimeoutAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | VPN Low Memory | ${VpnInstance}
@@ -1352,7 +1317,7 @@ Resources:
       Dimensions:
       - Name: InstanceId
         Value: !Ref VpnInstance
-  
+
   VpnInstanceSwapUsageAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1360,7 +1325,7 @@ Resources:
       - VpnInstanceLowMemoryAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | VPN Swap Usage | ${VpnInstance}
@@ -1375,7 +1340,7 @@ Resources:
       Dimensions:
       - Name: InstanceId
         Value: !Ref VpnInstance
-  
+
   VpnInstanceDiskUsageAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1383,7 +1348,7 @@ Resources:
       - VpnInstanceSwapUsageAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | VPN Disk Usage | ${VpnInstance}
@@ -1412,7 +1377,7 @@ Resources:
       - VpnInstanceDiskUsageAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | VPN Upgrade Check | ${VpnInstance}
@@ -1437,7 +1402,7 @@ Resources:
       - UpgradeCheckAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | VPN Restart Check | ${VpnInstance}
@@ -1454,7 +1419,7 @@ Resources:
         Value: !Ref Environment
       - Name: InstanceId
         Value: !Ref VpnInstance
-  
+
   NodeUpdateCheckAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1462,7 +1427,7 @@ Resources:
       - RestartCheckAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | VPN Node Update Check
@@ -1487,10 +1452,10 @@ Resources:
       InstanceId: !Ref VpnInstance
     DependsOn:
       - VpnInstance
-  
+
   VpnRegionRecordSet:
     Type: AWS::Route53::RecordSet
-    Properties: 
+    Properties:
       ResourceRecords:
         - !Ref VpnElasticIP
       Comment: !Join [ '-', [ !Ref Environment, !Ref VpnInstance ] ]

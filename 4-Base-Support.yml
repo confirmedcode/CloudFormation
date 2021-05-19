@@ -3,7 +3,7 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: Support Instance - Node server for support team / customer requests.
 
 Parameters:
-  
+
   Environment:
     Type: String
     Description: Name of the environment to bring up.
@@ -13,91 +13,91 @@ Parameters:
     Type: String
     Description: AMI
     Default: ""
-  
+
   InstanceType:
     Type: String
     Description: Instance Type
     Default: t3.micro
-  
+
   AllowedIp:
     Type: String
     Description: IP allowed to access Support
     Default: 192.168.0.0/32
-    
-Conditions: 
-  
+
+Conditions:
+
   OverrideAMI: !Not [!Equals [!Ref UbuntuAMI, ""]]
 
-Mappings: 
-  
-  RegionMap: 
-    us-east-1: 
-      AMI: ami-0735ea082a1534cac
+Mappings:
+
+  RegionMap:
+    us-east-1:
+      AMI: ami-0747bdcabd34c712a
       InstanceType: t3.small
       EbsOptimized: true
     us-east-2:
-      AMI: ami-04c305e118636bc7d
+      AMI: ami-0b9064170e32bde34
       InstanceType: t3.small
       EbsOptimized: true
-    us-west-1: 
-      AMI: ami-0f5113ce7686689e9
+    us-west-1:
+      AMI: ami-07b068f843ec78e72
       InstanceType: t3.small
       EbsOptimized: true
-    us-west-2: 
-      AMI: ami-01e0cf6e025c036e4
+    us-west-2:
+      AMI: ami-090717c950a5c34d3
       InstanceType: t3.small
       EbsOptimized: true
     ap-south-1:
-      AMI: ami-0c6c52d7cf1004825
+      AMI: ami-04bde106886a53080
       InstanceType: t2.small
       EbsOptimized: false
     ap-northeast-2:
-      AMI: ami-0035936492be04cff
+      AMI: ami-0ba5cd124d7a79612
       InstanceType: t2.small
       EbsOptimized: false
     ap-southeast-1:
-      AMI: ami-0d97809b54a5f01ba
+      AMI: ami-055147723b7bca09a
       InstanceType: t3.small
       EbsOptimized: true
     ap-southeast-2:
-      AMI: ami-05162512c82cb460f
+      AMI: ami-0f39d06d145e9bb63
       InstanceType: t2.small
       EbsOptimized: false
     ap-northeast-1:
-      AMI: ami-06317ca3b39714f7e
+      AMI: ami-0fe22bffdec36361c
       InstanceType: t3.small
       EbsOptimized: true
     ca-central-1:
-      AMI: ami-0a5443ed7b0a45901
+      AMI: ami-0e28822503eeedddc
       InstanceType: t3.small
       EbsOptimized: true
     eu-central-1:
-      AMI: ami-0dd0be70cc0d493b7
+      AMI: ami-0b1deee75235aa4bb
       InstanceType: t3.small
       EbsOptimized: true
     eu-west-1:
-      AMI: ami-00b36349b3dba2ec3
+      AMI: ami-0943382e114f188e8
       InstanceType: t3.small
       EbsOptimized: true
     eu-west-2:
-      AMI: ami-06f77073d7dc4c48a
+      AMI: ami-09a56048b08f94cdf
       InstanceType: t3.small
       EbsOptimized: true
     eu-west-3:
-      AMI: ami-0b26151106502588d
+      AMI: ami-06602da18c878f98d
       InstanceType: t2.small
       EbsOptimized: false
     sa-east-1:
-      AMI: ami-0f7c76bfc85e5b4ea
+      AMI: ami-05aa753c043f1dcd3
       InstanceType: t2.small
       EbsOptimized: false
-      
+
 Resources:
-      
+
   # ==================================================
   # ============= Instance Role ======================
   # ==================================================
-             
+
   SupportRole:
     Type: AWS::IAM::Role
     Properties:
@@ -144,15 +144,15 @@ Resources:
     Properties:
       Roles:
         - !Ref SupportRole
-      
+
   # ==================================================
   # =================== SECURITY GROUPS ==============
   # ==================================================
-  
+
   SupportSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      VpcId: 
+      VpcId:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, VPCId ] ]
       GroupDescription: Database Postgres In
@@ -165,7 +165,7 @@ Resources:
   SupportLoadBalancerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      VpcId: 
+      VpcId:
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, VPCId ] ]
       GroupDescription: HTTPS In
@@ -174,7 +174,7 @@ Resources:
           Value: SupportLoadBalancer
         - Key: Environment
           Value: !Ref Environment
-  
+
   SupportLoadBalancerSupportSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -184,7 +184,7 @@ Resources:
       Description: Allow HTTP from Support Load Balancer to Support
       SourceSecurityGroupId: !Ref SupportLoadBalancerSecurityGroup
       GroupId: !Ref SupportSecurityGroup
-  
+
   SupportRedisSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -206,7 +206,7 @@ Resources:
       Description: Allow HTTPS from allowed IP to Support Load Balancer
       CidrIp: !Ref AllowedIp
       GroupId: !Ref SupportLoadBalancerSecurityGroup
-          
+
   SupportDatabaseSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -218,16 +218,16 @@ Resources:
       GroupId:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, DatabaseSecurityGroupId ] ]
-      
+
   # ==================================================
   # ================== CODEPIPELINE ==================
   # ==================================================
-  
+
   SupportCodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
       Name: !Join [ '-', [ !Ref Environment, Support ] ]
-      ServiceRole: 
+      ServiceRole:
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, CodeBuildRoleArn ] ]
       Artifacts:
@@ -259,10 +259,10 @@ Resources:
         Type: CODEPIPELINE
       TimeoutInMinutes: 15
       VpcConfig:
-        SecurityGroupIds: 
+        SecurityGroupIds:
           - Fn::ImportValue:
               !Join [ '-', [ !Ref Environment, TestCodeBuildSecurityGroupId ] ]
-        Subnets: 
+        Subnets:
           - Fn::ImportValue:
               !Join [ '-', [ !Ref Environment, TestPrivateSubnet ] ]
           - Fn::ImportValue:
@@ -273,7 +273,7 @@ Resources:
       Tags:
         - Key: Environment
           Value: !Ref Environment
-  
+
   SupportCodePipeline:
     Type: AWS::CodePipeline::Pipeline
     DependsOn:
@@ -292,7 +292,7 @@ Resources:
             !Join [ '-', [ !Ref Environment, ArtifactBucket ] ]
         Type: S3
       Name: !Join [ '-', [ !Ref Environment, Support ] ]
-      RoleArn: 
+      RoleArn:
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, CodePipelineRoleArn ] ]
       Stages:
@@ -341,15 +341,15 @@ Resources:
                 DeploymentGroupName: !Ref SupportDeploymentGroup
               InputArtifacts:
                 - Name: CodeBuildArtifact
-  
+
   SupportApplication:
     Type: AWS::CodeDeploy::Application
     Properties:
       ApplicationName: !Join [ '-', [ !Ref Environment, Support ] ]
 
-  SupportDeploymentGroup: 
+  SupportDeploymentGroup:
     Type: AWS::CodeDeploy::DeploymentGroup
-    Properties: 
+    Properties:
       ApplicationName: !Ref SupportApplication
       AutoScalingGroups:
         - !Ref SupportAutoScalingGroup
@@ -360,14 +360,14 @@ Resources:
       LoadBalancerInfo:
         TargetGroupInfoList:
           - Name: !GetAtt SupportTargetGroup.TargetGroupName
-      ServiceRoleArn: 
+      ServiceRoleArn:
         Fn::ImportValue:
            !Join [ '-', [ !Ref Environment, CodeDeployRoleArn ] ]
 
   # ==================================================
   # ===================   Support   ==================
   # ==================================================
-  
+
   SupportLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -389,25 +389,25 @@ Resources:
           Value: !Ref Environment
       Type: application
       IpAddressType: ipv4
-  
+
   SupportDNSRecordSet:
     Type: AWS::Route53::RecordSet
-    Properties: 
-      AliasTarget: 
+    Properties:
+      AliasTarget:
         DNSName: !GetAtt SupportLoadBalancer.DNSName
         EvaluateTargetHealth: false
         HostedZoneId: !GetAtt SupportLoadBalancer.CanonicalHostedZoneID
       Comment: !Join [ '-', [ !Ref Environment, SupportLoadBalancer ] ]
       HostedZoneName: !Sub
                         - ${Domain}.
-                        - Domain: 
+                        - Domain:
                             Fn::ImportValue: !Sub ${Environment}-Domain
       Name: !Sub
               - support.${Domain}
-              - Domain: 
+              - Domain:
                   Fn::ImportValue: !Sub ${Environment}-Domain
       Type: A
-      
+
   SupportTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -436,12 +436,12 @@ Resources:
       VpcId:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, VPCId ] ]
-  
+
   SupportLoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties: 
+    Properties:
       Certificates:
-        - CertificateArn: 
+        - CertificateArn:
             Fn::ImportValue: !Sub ${Environment}-DomainCertificate
       DefaultActions:
         - TargetGroupArn: !Ref SupportTargetGroup
@@ -450,7 +450,7 @@ Resources:
       Port: 443
       Protocol: HTTPS
       SslPolicy: ELBSecurityPolicy-TLS-1-2-Ext-2018-06
-  
+
   # SupportLoadBalancerHttpRedirectListener:
   #   Type: AWS::ElasticLoadBalancingV2::Listener
   #   Properties:
@@ -463,7 +463,7 @@ Resources:
   #     LoadBalancerArn: !Ref SupportLoadBalancer
   #     Port: 80
   #     Protocol: HTTP
-  
+
   SupportAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     CreationPolicy:
@@ -499,7 +499,7 @@ Resources:
           PropagateAtLaunch: true
       TargetGroupARNs:
         - !Ref SupportTargetGroup
-  
+
   SupportLaunchConfiguration:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
@@ -521,32 +521,31 @@ Resources:
         "Fn::Base64":
           !Sub |
             #!/bin/bash -ex
-            # Install Updates and Python SetupTools (for easy_install)
+            # Install Updates and Python3
             export DEBIAN_FRONTEND=noninteractive
             apt-get update && apt-get dist-upgrade -yq
-            apt-get -yq install python-setuptools
+            apt-get -yq install python3.7-distutils python3-pip python3 python3-setuptools
             # Install CloudFormation Bootstrap
-            easy_install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz
-            ln -s /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup /etc/init.d/cfn-hup
-            chmod +x /usr/local/lib/python2.7/dist-packages/aws_cfn_bootstrap-1.4-py2.7.egg/init/ubuntu/cfn-hup
-            update-rc.d cfn-hup defaults
+            wget https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz
+            tar -xvzf aws-cfn-bootstrap-py3-latest.tar.gz
+            cd aws-cfn-bootstrap-2.0
+            python3 setup.py install
             # Run CloudFormation Init
             cfn-init -c default --stack ${AWS::StackName} --resource SupportLaunchConfiguration --region ${AWS::Region}
             # Signal success to CloudFormation on reboot
-            echo "@reboot root /usr/local/bin/cfn-signal --success true --stack ${AWS::StackName} --resource SupportAutoScalingGroup --region ${AWS::Region} 2>&1 | /usr/bin/logger -t cfn_success" >> /etc/cron.d/success_on_reboot            
+            echo "@reboot root /usr/local/bin/cfn-signal --success true --stack ${AWS::StackName} --resource SupportAutoScalingGroup --region ${AWS::Region} 2>&1 | /usr/bin/logger -t cfn_success" >> /etc/cron.d/success_on_reboot
             echo "@reboot root /home/ubuntu/install-codedeploy.sh 2>&1 | /usr/bin/logger -t install_codedeploy" >> /etc/cron.d/install_codedeploy_on_reboot
             # Reboot to pick up latest patches
             reboot
     Metadata:
       AWS::CloudFormation::Init:
-        configSets: 
+        configSets:
           default:
             - "unattended-upgrades"
             - "enable-swap"
             - "install-pip-and-curl-and-ruby"
             - "set-region-and-environment"
             - "install-aws-cloudwatch-and-cli"
-            - "setup-cfn-hup"
             - "install-node"
             - "forward-node-port-on-reboot"
             - "install-pm2"
@@ -614,7 +613,7 @@ Resources:
             3_set_git_branch:
               command: !Sub
                 - echo GIT_BRANCH=${Branch} >> /etc/environment
-                - Branch: 
+                - Branch:
                     Fn::ImportValue:
                       !Join [ '-', [ !Ref Environment, GitBranch ] ]
         install-aws-cloudwatch-and-cli:
@@ -663,11 +662,6 @@ Resources:
                             "file_path": "/var/log/cfn-init-cmd.log",
                             "log_group_name": "${Environment}-Support",
                             "log_stream_name": "{instance_id}-cfn-init-cmd"
-                          },
-                          {
-                            "file_path": "/var/log/cfn-hup.log",
-                            "log_group_name": "${Environment}-Support",
-                            "log_stream_name": "{instance_id}-cfn-hup"
                           },
                           {
                             "file_path": "/var/log/amazon/ssm/amazon-ssm-agent.log",
@@ -776,35 +770,6 @@ Resources:
                 cd /home/ubuntu/cloudwatch_agent
                 ./install.sh
                 /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/home/ubuntu/cloudwatch.config -s
-        setup-cfn-hup:
-           files:
-             '/etc/cfn/cfn-hup.conf':
-               content: !Sub |
-                 [main]
-                 stack=${AWS::StackId}
-                 region=${AWS::Region}
-                 interval=1
-               mode: '000400'
-               owner: root
-               group: root
-             '/etc/cfn/hooks.d/cfn-auto-reloader.conf':
-               content: !Sub |
-                 [cfn-auto-reloader-hook]
-                 triggers=post.update
-                 path=Resources.SupportLaunchConfiguration.Metadata.AWS::CloudFormation::Init
-                 action=cfn-init --verbose --stack=${AWS::StackName} --region=${AWS::Region} --resource=SupportLaunchConfiguration --configsets updateable
-                 runas=root
-               mode: '000400'
-               owner: root
-               group: root
-           services:
-             sysvinit:
-               cfn-hup:
-                 enabled: true
-                 ensureRunning: true
-                 files:
-                 - '/etc/cfn/cfn-hup.conf'
-                 - '/etc/cfn/hooks.d/cfn-auto-reloader.conf'
         install-node:
           commands:
             0_create_user:
@@ -818,7 +783,7 @@ Resources:
                         --home /home/node \
                         node
             1_setup:
-              command: curl -sL https://deb.nodesource.com/setup_10.x | bash -
+              command: curl -sL https://deb.nodesource.com/setup_12.x | bash -
             2_install:
               command: apt-get install -yq nodejs
             3_update_npm:
@@ -845,12 +810,12 @@ Resources:
   # ==================================================
   # ============ APPLICATION ERROR ALERTS ============
   # ==================================================
-  
+
   SupportNodeEmailerSubscriptionFilter:
     Type: AWS::Logs::SubscriptionFilter
     DependsOn:
       - SupportAutoScalingGroup
-    Properties: 
+    Properties:
       DestinationArn:
         Fn::ImportValue:
           !Join [ '-', [ !Ref Environment, ErrorEmailerFunctionArn ] ]
@@ -860,14 +825,14 @@ Resources:
   # ==================================================
   # ================= CLOUDWATCH ALARMS ==============
   # ==================================================
-    
+
   SupportTargetGroupUnhealthyHostAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
       - SupportAutoScalingGroup
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Support Unhealthy Host
@@ -884,7 +849,7 @@ Resources:
         Value: !GetAtt SupportTargetGroup.TargetGroupFullName
       - Name: LoadBalancer
         Value: !GetAtt SupportLoadBalancer.LoadBalancerFullName
-  
+
   SupportTargetGroupHealthyHostAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -892,7 +857,7 @@ Resources:
       - SupportTargetGroupUnhealthyHostAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Support Healthy Host
@@ -909,7 +874,7 @@ Resources:
         Value: !GetAtt SupportTargetGroup.TargetGroupFullName
       - Name: LoadBalancer
         Value: !GetAtt SupportLoadBalancer.LoadBalancerFullName
-  
+
   SupportTargetGroupLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -917,7 +882,7 @@ Resources:
       - SupportTargetGroupHealthyHostAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Support Latency
@@ -942,7 +907,7 @@ Resources:
       - SupportTargetGroupLatencyAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Support CPU
@@ -965,7 +930,7 @@ Resources:
       - SupportTargetGroupLatencyAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Support Low Memory
@@ -980,7 +945,7 @@ Resources:
       Dimensions:
       - Name: AutoScalingGroupName
         Value: !Ref SupportAutoScalingGroup
-  
+
   SwapUsageAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -988,7 +953,7 @@ Resources:
       - LowMemoryAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Support Swap Usage
@@ -1003,7 +968,7 @@ Resources:
       Dimensions:
       - Name: AutoScalingGroupName
         Value: !Ref SupportAutoScalingGroup
-  
+
   DiskUsageAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1011,7 +976,7 @@ Resources:
       - SwapUsageAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Support Disk Usage
@@ -1026,7 +991,7 @@ Resources:
       Dimensions:
       - Name: AutoScalingGroupName
         Value: !Ref SupportAutoScalingGroup
-        
+
   UpgradeCheckAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1034,7 +999,7 @@ Resources:
       - DiskUsageAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Support Upgrade Check
@@ -1059,7 +1024,7 @@ Resources:
       - UpgradeCheckAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Support Restart Check
@@ -1101,7 +1066,7 @@ Resources:
         Value: !Ref Environment
       - Name: AutoScalingGroupName
         Value: !Ref SupportAutoScalingGroup
-  
+
   NodeUpdateCheckAlarm:
     Type: AWS::CloudWatch::Alarm
     DependsOn:
@@ -1109,7 +1074,7 @@ Resources:
       - SecurityPackagesAlarm
     Properties:
       ActionsEnabled: true
-      AlarmActions: 
+      AlarmActions:
         - Fn::ImportValue:
             !Join [ '-', [ !Ref Environment, CloudWatchAlarmEmailerTopic ] ]
       AlarmDescription: !Sub ${Environment} | Support Node Update Check
@@ -1126,18 +1091,18 @@ Resources:
         Value: !Ref Environment
       - Name: AutoScalingGroupName
         Value: !Ref SupportAutoScalingGroup
-        
+
   SupportCodePipelineAlert:
     Type: AWS::Events::Rule
-    Properties: 
+    Properties:
       Description: Alert when CodePipeline Fails
-      EventPattern: 
-        source: 
+      EventPattern:
+        source:
           - "aws.codepipeline"
-        detail-type: 
+        detail-type:
           - "CodePipeline Pipeline Execution State Change"
-        detail: 
-          state: 
+        detail:
+          state:
             - "FAILED"
           pipeline:
             - !Ref SupportCodePipeline
